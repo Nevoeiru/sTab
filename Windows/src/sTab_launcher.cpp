@@ -1,4 +1,5 @@
 #include <windows.h>
+#include <shlwapi.h>
 #include <stdio.h>
 #include <string>
 
@@ -10,21 +11,30 @@ int main() {
     SetConsoleTitleA("sTab (SculptBridge) - Launcher Galaxy Tab S9 FE+");
 
     printf("====================================================================\n");
-    printf("   sTab (SculptBridge) - Launcher Integrado para Blender 3D\n");
+    printf("   sTab (SculptBridge) - Launcher Integrado para Blender 3D        \n");
     printf("   Galaxy Tab S9 FE+ como Mesa Digitalizadora 90Hz de Alta Precisao\n");
     printf("====================================================================\n\n");
 
-    char currentDir[MAX_PATH];
-    GetCurrentDirectoryA(MAX_PATH, currentDir);
+    char exePath[MAX_PATH];
+    GetModuleFileNameA(NULL, exePath, MAX_PATH);
+    PathRemoveFileSpecA(exePath);
 
-    std::string adbPath = "..\\dependencias\\platform-tools\\adb.exe";
-    std::string serverPath = "bin\\sTab_server.exe";
+    std::string binDir = exePath;
+    std::string rootDir = binDir;
 
-    // Checa se o servidor existe
-    DWORD serverAttr = GetFileAttributesA(serverPath.c_str());
+    // Se estiver em Windows\bin, a raiz fica dois níveis acima
+    char rootBuf[MAX_PATH];
+    strcpy_s(rootBuf, exePath);
+    PathRemoveFileSpecA(rootBuf); // Sai de bin para Windows
+    PathRemoveFileSpecA(rootBuf); // Sai de Windows para raiz do projeto
+    rootDir = rootBuf;
+
+    std::string adbPath = "\"" + rootDir + "\\dependencias\\platform-tools\\adb.exe\"";
+    std::string serverPath = "\"" + binDir + "\\sTab_server.exe\"";
+
+    DWORD serverAttr = GetFileAttributesA((binDir + "\\sTab_server.exe").c_str());
     if (serverAttr == INVALID_FILE_ATTRIBUTES) {
-        printf("[AVISO] Servidor 'bin\\sTab_server.exe' nao encontrado no diretorio local.\n");
-        serverPath = "sTab_server.exe";
+        serverPath = "\"" + rootDir + "\\Windows\\bin\\sTab_server.exe\"";
     }
 
     // 1. Configura os tuneis reversos via ADB
@@ -64,7 +74,7 @@ int main() {
         printf("  [DISPLAY] Monitor 2560x1600 @ 90Hz (VDD 16:10 Nativo) DETECTADO!\n\n");
     } else {
         printf("  [DISPLAY] Modo espelhamento / display padrao ativo.\n");
-        printf("  (Dica: Para resolucao 16:10 nativa sem faixas pretas, consulte VirtualDisplay/INSTALACAO_VDD.md)\n\n");
+        printf("  (Dica: Para resolucao 16:10 nativa sem faixas pretas, o driver VDD cria a tela estendida).\n\n");
     }
 
     // 2. Inicia o app no tablet via ADB Intent
@@ -73,9 +83,10 @@ int main() {
     system(launchAppCmd.c_str());
 
     // 3. Executa o servidor principal do sTab
-    printf("[3/3] Iniciando o servidor Windows sTab_server.exe...\n");
+    printf("[3/3] Iniciando o servidor Windows sTab_server.exe com Janela HUD...\n");
     printf("====================================================================\n");
-    printf("   Pressione Ctrl+C para encerrar o servidor a qualquer momento.\n");
+    printf("   A Janela Grafica HUD sTab esta aberta.\n");
+    printf("   Feche a janela HUD ou pressione Ctrl+C para encerrar.\n");
     printf("====================================================================\n\n");
 
     int serverRes = system(serverPath.c_str());

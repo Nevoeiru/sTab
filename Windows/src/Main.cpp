@@ -3,6 +3,7 @@
 #endif
 #include <winsock2.h>
 #include <windows.h>
+#include <shlwapi.h>
 #include <stdio.h>
 #include "Protocol.h"
 #include "PointerInjector.h"
@@ -12,8 +13,9 @@
 #include "H264Encoder.h"
 #include "VideoServer.h"
 #include "TelemetryBridge.h"
+#include "ServerHud.h"
 
-static volatile bool g_running = true;
+volatile bool g_running = true;
 
 BOOL WINAPI ConsoleCtrlHandler(DWORD signal) {
     if (signal == CTRL_C_EVENT || signal == CTRL_CLOSE_EVENT) {
@@ -172,6 +174,26 @@ int main(int argc, char* argv[]) {
     printf("  Otimizacao Win32: Supressao Press-and-Hold + Trava Modal Ativas\n");
     printf("===============================================================\n\n");
 
+    // 0. Auto-configuração dos túneis ADB USB reversos (27183, 27184, 27185)
+    wchar_t serverExePath[MAX_PATH];
+    GetModuleFileNameW(NULL, serverExePath, MAX_PATH);
+    PathRemoveFileSpecW(serverExePath); // remove sTab_server.exe -> Windows\bin
+    PathRemoveFileSpecW(serverExePath); // remove bin -> Windows
+    PathRemoveFileSpecW(serverExePath); // remove Windows -> raiz do projeto
+    std::wstring rootPath = serverExePath;
+    std::wstring adbBinary = rootPath + L"\\dependencias\\platform-tools\\adb.exe";
+
+    if (GetFileAttributesW(adbBinary.c_str()) != INVALID_FILE_ATTRIBUTES) {
+        printf("[sTab] Configurando tuneis reversos USB no Galaxy Tab S9 FE+...\n");
+        std::wstring r1 = L"\"\"" + adbBinary + L"\" reverse tcp:27183 tcp:27183 >nul 2>&1\"";
+        std::wstring r2 = L"\"\"" + adbBinary + L"\" reverse tcp:27184 tcp:27184 >nul 2>&1\"";
+        std::wstring r3 = L"\"\"" + adbBinary + L"\" reverse tcp:27185 tcp:27185 >nul 2>&1\"";
+        _wsystem(r1.c_str());
+        _wsystem(r2.c_str());
+        _wsystem(r3.c_str());
+        printf("[sTab] Tuneis reversos ativos: Portas 27183, 27184 e 27185.\n\n");
+    }
+
     // 1. Inicializa o motor de entrada S-Pen e Gestos
     PointerInjector injector;
     if (!injector.Initialize()) {
@@ -223,14 +245,47 @@ int main(int argc, char* argv[]) {
         }
     });
 
+    // 3. Inicializa a Janela HUD Gráfica do Servidor
+    ServerHud serverHud;
+    HudTelemetryState hudState = {};
+    hudState.displayWidth = vidWidth;
+    hudState.displayHeight = vidHeight;
+    hudState.is1610Native = capture.IsUsingVirtualDisplay();
+    serverHud.Start();
+    serverHud.UpdateTelemetry(hudState);
+
+    // Callbacks de telemetria de entrada para a HUD
+    tcpServer.SetInputPacketCallback([&serverHud, &hudState, vidWidth, vidHeight](const InputPacket& pkt) {
+        if (pkt.packetType == PACKET_TYPE_PEN) {
+            hudState.penPressure = pkt.pressure;
+            hudState.penX = (int)(((double)pkt.x / 65535.0) * vidWidth);
+            hudState.penY = (int)(((double)pkt.y / 65535.0) * vidHeight);
+            hudState.penTiltX = (float)pkt.tiltX;
+            hudState.penTiltY = (float)pkt.tiltY;
+            hudState.isContact = (pkt.flags & FLAG_PEN_CONTACT) != 0;
+            hudState.isHover = (pkt.flags & FLAG_PEN_HOVER) != 0;
+            hudState.barrelButton = (pkt.flags & FLAG_PEN_BARREL_BUTTON) != 0;
+            serverHud.UpdateTelemetry(hudState);
+        }
+    });
+
     if (!tcpServer.Start(&injector, &translator)) {
         printf("[ERRO FATAL] Nao foi possivel iniciar o servidor TCP de telemetria na porta 27183.\n");
+        serverHud.Stop();
         injector.Shutdown();
         return 1;
     }
 
-    // 3. Inicializa a ponte de telemetria do Blender (porta 27185)
+    // 4. Inicializa a ponte de telemetria do Blender (porta 27185)
     TelemetryBridge telemetryBridge(27185);
+    telemetryBridge.SetBlenderDataCallback([&serverHud, &hudState](const char* brush, float size, float strength, bool symX) {
+        strncpy(hudState.activeBrush, brush, 63);
+        hudState.activeBrush[63] = '\0';
+        hudState.brushRadius = size;
+        hudState.brushStrength = strength;
+        hudState.symmetryX = symX;
+        serverHud.UpdateTelemetry(hudState);
+    });
     telemetryBridge.Start();
 
     printf("\n[sTab] Servidor pronto e em execucao. Pressione Ctrl+C para encerrar.\n\n");
@@ -257,22 +312,40 @@ int main(int argc, char* argv[]) {
 
     uint64_t lastTelemetryPackets = 0;
     uint64_t lastVideoFrames = 0;
+    uint64_t lastBytesSent = 0;
 
     while (g_running) {
-        Sleep(2000);
+        Sleep(500);
+
+        hudState.clientConnected = tcpServer.IsClientConnected();
+        hudState.videoStreaming = videoServer.IsClientConnected();
+        hudState.blenderConnected = telemetryBridge.IsTabletConnected();
+        hudState.totalBytesSent = videoServer.GetTotalBytesSent();
+
+        uint64_t currentTel = tcpServer.GetTotalPacketsReceived();
+        uint64_t currentVid = videoServer.GetTotalFramesSent();
+        uint64_t currentBytes = videoServer.GetTotalBytesSent();
+
+        hudState.currentFps = (float)(currentVid - lastVideoFrames) * 2.0f;
+        float bytesSec = (float)(currentBytes - lastBytesSent) * 2.0f;
+        hudState.bitrateMbps = (bytesSec * 8.0f) / 1000000.0f;
+
+        lastTelemetryPackets = currentTel;
+        lastVideoFrames = currentVid;
+        lastBytesSent = currentBytes;
+
+        serverHud.UpdateTelemetry(hudState);
+
+        if (!serverHud.IsOpen() && g_running) {
+            g_running = false;
+            break;
+        }
 
         if (tcpServer.IsClientConnected() || videoServer.IsClientConnected()) {
-            uint64_t currentTel = tcpServer.GetTotalPacketsReceived();
-            uint64_t currentVid = videoServer.GetTotalFramesSent();
-
-            uint64_t telRate = (currentTel - lastTelemetryPackets) / 2;
-            uint64_t vidFps  = (currentVid - lastVideoFrames) / 2;
-
-            lastTelemetryPackets = currentTel;
-            lastVideoFrames = currentVid;
-
-            printf("[Status] Telemetria: ~%llu p/s | Video Stream: ~%llu FPS | Transmitido: %.2f MB\n",
-                   telRate, vidFps, (double)videoServer.GetTotalBytesSent() / (1024.0 * 1024.0));
+            printf("[Status] Telemetria: ~%.0f p/s | Video Stream: ~%.0f FPS | Transmitido: %.2f MB\n",
+                   (double)(currentTel - lastTelemetryPackets) * 2.0,
+                   (double)hudState.currentFps,
+                   (double)hudState.totalBytesSent / (1024.0 * 1024.0));
         }
     }
 
@@ -281,6 +354,7 @@ int main(int argc, char* argv[]) {
         CloseHandle(hCaptureThread);
     }
 
+    serverHud.Stop();
     videoServer.Stop();
     telemetryBridge.Stop();
     encoder.Shutdown();

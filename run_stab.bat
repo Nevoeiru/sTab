@@ -35,6 +35,7 @@ if not exist "%SERVER_EXE%" (
 
 :: 3. Verifica conexao com o Galaxy Tab S9 FE+
 echo [1/4] Verificando conexao USB com o Galaxy Tab S9 FE+...
+set "DEVICE_FOUND=0"
 for /f "skip=1 tokens=1,2" %%A in ('"%ADB_PATH%" devices') do (
     if "%%B"=="device" (
         set "DEVICE_FOUND=1"
@@ -42,7 +43,7 @@ for /f "skip=1 tokens=1,2" %%A in ('"%ADB_PATH%" devices') do (
     )
 )
 
-if "%DEVICE_FOUND%" neq "1" (
+if "!DEVICE_FOUND!" neq "1" (
     echo.
     echo [AVISO] Nenhum tablet detectado via cabo USB!
     echo   1. Conecte o cabo USB-C entre o PC e o Galaxy Tab S9 FE+.

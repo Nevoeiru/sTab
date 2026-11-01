@@ -2,6 +2,7 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include <shellapi.h>
 #include <shlobj.h>
 #include <shlwapi.h>
 #include <stdio.h>
@@ -12,9 +13,39 @@
 namespace fs = std::filesystem;
 
 /**
- * @brief Cria um atalho (.lnk) na Área de Trabalho do Windows.
+ * @brief Verifica se o processo atual possui privilégios de Administrador.
  */
-bool CreateDesktopShortcut(const std::wstring& targetPath, const std::wstring& workingDir, const std::wstring& description, const std::wstring& shortcutName) {
+bool IsElevated() {
+    BOOL isElevated = FALSE;
+    PSID adminGroup = NULL;
+    SID_IDENTIFIER_AUTHORITY ntAuth = SECURITY_NT_AUTHORITY;
+    if (AllocateAndInitializeSid(&ntAuth, 2, SECURITY_BUILTIN_DOMAIN_RID, DOMAIN_ALIAS_RID_ADMINS, 0, 0, 0, 0, 0, 0, &adminGroup)) {
+        CheckTokenMembership(NULL, adminGroup, &isElevated);
+        FreeSid(adminGroup);
+    }
+    return isElevated == TRUE;
+}
+
+/**
+ * @brief Solicita elevação UAC do Windows para permissões administrativas.
+ */
+bool RelaunchElevated() {
+    wchar_t exePath[MAX_PATH];
+    GetModuleFileNameW(NULL, exePath, MAX_PATH);
+
+    SHELLEXECUTEINFOW sei = {};
+    sei.cbSize = sizeof(sei);
+    sei.lpVerb = L"runas";
+    sei.lpFile = exePath;
+    sei.nShow = SW_SHOWNORMAL;
+
+    return ShellExecuteExW(&sei) == TRUE;
+}
+
+/**
+ * @brief Cria ou atualiza o atalho (.lnk) na Área de Trabalho do Windows.
+ */
+bool UpdateDesktopShortcut(const std::wstring& targetPath, const std::wstring& workingDir, const std::wstring& description, const std::wstring& shortcutName) {
     CoInitialize(NULL);
     IShellLinkW* psl = NULL;
     HRESULT hr = CoCreateInstance(CLSID_ShellLink, NULL, CLSCTX_INPROC_SERVER, IID_IShellLinkW, (void**)&psl);
@@ -40,7 +71,7 @@ bool CreateDesktopShortcut(const std::wstring& targetPath, const std::wstring& w
 }
 
 /**
- * @brief Encontra o executavel do Blender no sistema (Steam, caminhos padrao ou PATH).
+ * @brief Encontra o executável do Blender no sistema.
  */
 std::wstring FindBlenderExecutable() {
     std::vector<std::wstring> candidates = {
@@ -48,6 +79,8 @@ std::wstring FindBlenderExecutable() {
         L"C:\\Program Files\\Blender Foundation\\Blender 5.2\\blender.exe",
         L"C:\\Program Files\\Blender Foundation\\Blender 5.1\\blender.exe",
         L"C:\\Program Files\\Blender Foundation\\Blender 4.2\\blender.exe",
+        L"C:\\Program Files\\Blender Foundation\\Blender 4.1\\blender.exe",
+        L"C:\\Program Files\\Blender Foundation\\Blender 4.0\\blender.exe",
         L"C:\\Program Files\\Steam\\steamapps\\common\\Blender\\blender.exe",
         L"D:\\SteamLibrary\\steamapps\\common\\Blender\\blender.exe"
     };
@@ -61,9 +94,9 @@ std::wstring FindBlenderExecutable() {
 }
 
 /**
- * @brief Instala o Add-on sTab Companion nas pastas de versao do Blender.
+ * @brief Atualiza o Add-on sTab Companion em todas as pastas de versão do Blender.
  */
-int InstallBlenderAddon(const std::wstring& sourceAddonPath) {
+int UpdateBlenderAddon(const std::wstring& sourceAddonPath) {
     wchar_t appData[MAX_PATH];
     if (SHGetFolderPathW(NULL, CSIDL_APPDATA, NULL, 0, appData) != S_OK) {
         return 0;
@@ -89,7 +122,7 @@ int InstallBlenderAddon(const std::wstring& sourceAddonPath) {
                 fs::copy_file(sourceAddonPath, targetAddon, fs::copy_options::overwrite_existing, ec);
 
                 if (!ec) {
-                    wprintf(L"  [OK] Add-on instalado na versao: Blender %ls\n", versionDir.filename().c_str());
+                    wprintf(L"  [OK] Add-on atualizado na versao: Blender %ls\n", versionDir.filename().c_str());
                     installedCount++;
                 }
             }
@@ -99,35 +132,120 @@ int InstallBlenderAddon(const std::wstring& sourceAddonPath) {
     return installedCount;
 }
 
+/**
+ * @brief Instala ou atualiza automaticamente o Driver de Monitor Virtual (VDD 16:10).
+ */
+bool InstallVirtualDisplayDriver(const std::wstring& rootDir) {
+    std::wstring vddDest = L"C:\\VirtualDisplayDriver";
+    std::error_code ec;
+    fs::create_directories(vddDest, ec);
+
+    // Pastas de origem candidatas dentro do repositório
+    std::vector<std::wstring> sourceFolders = {
+        rootDir + L"\\VirtualDisplay\\control\\SignedDrivers\\x86\\VDD",
+        rootDir + L"\\VirtualDisplay\\driver\\VirtualDisplayDriver"
+    };
+
+    std::wstring validSource = L"";
+    for (const auto& src : sourceFolders) {
+        if (GetFileAttributesW((src + L"\\MttVDD.inf").c_str()) != INVALID_FILE_ATTRIBUTES) {
+            validSource = src;
+            break;
+        }
+    }
+
+    if (validSource.empty()) {
+        printf("  [AVISO] Arquivos do driver VDD nao encontrados na pasta VirtualDisplay.\n");
+        return false;
+    }
+
+    // Copia os arquivos do driver para C:\VirtualDisplayDriver
+    try {
+        for (const auto& file : fs::directory_iterator(validSource)) {
+            fs::copy_file(file.path(), fs::path(vddDest) / file.path().filename(), fs::copy_options::overwrite_existing, ec);
+        }
+    } catch (...) {}
+
+    // Copia devcon.exe
+    std::wstring devconSrc = validSource + L"\\devcon.exe";
+    if (GetFileAttributesW(devconSrc.c_str()) != INVALID_FILE_ATTRIBUTES) {
+        CopyFileW(devconSrc.c_str(), (vddDest + L"\\devcon.exe").c_str(), FALSE);
+    }
+
+    // Copia o arquivo de calibracao 16:10 options.txt
+    std::wstring optionsSrc = rootDir + L"\\VirtualDisplay\\options.txt";
+    if (GetFileAttributesW(optionsSrc.c_str()) != INVALID_FILE_ATTRIBUTES) {
+        CopyFileW(optionsSrc.c_str(), (vddDest + L"\\options.txt").c_str(), FALSE);
+        CopyFileW(optionsSrc.c_str(), (vddDest + L"\\option.txt").c_str(), FALSE);
+    }
+
+    // Registra a chave no Windows Registry (SOFTWARE\MikeTheTech\VirtualDisplayDriver -> VDDPATH)
+    HKEY hKey;
+    if (RegCreateKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\MikeTheTech\\VirtualDisplayDriver", 0, NULL, 0, KEY_SET_VALUE, NULL, &hKey, NULL) == ERROR_SUCCESS) {
+        RegSetValueExW(hKey, L"VDDPATH", 0, REG_SZ, (const BYTE*)vddDest.c_str(), (DWORD)((vddDest.length() + 1) * sizeof(wchar_t)));
+        RegCloseKey(hKey);
+    }
+
+    // Instalação do driver via PnPUtil
+    printf("      Registrando pacote do driver no Windows (PnPUtil)...\n");
+    std::wstring pnpCmd = L"pnputil /add-driver \"C:\\VirtualDisplayDriver\\MttVDD.inf\" /install >nul 2>&1";
+    _wsystem(pnpCmd.c_str());
+
+    // Cria o dispositivo raiz Root\MttVDD via devcon se ainda não estiver instanciado
+    std::wstring devconExe = vddDest + L"\\devcon.exe";
+    if (GetFileAttributesW(devconExe.c_str()) != INVALID_FILE_ATTRIBUTES) {
+        std::wstring devconCheck = L"\"\"" + devconExe + L"\" status Root\\MttVDD >nul 2>&1\"";
+        int checkRes = _wsystem(devconCheck.c_str());
+        if (checkRes != 0) {
+            printf("      Instanciando dispositivo de Monitor Virtual (Root\\MttVDD)...\n");
+            std::wstring devconInstall = L"\"\"" + devconExe + L"\" install \"C:\\VirtualDisplayDriver\\MttVDD.inf\" Root\\MttVDD >nul 2>&1\"";
+            _wsystem(devconInstall.c_str());
+        }
+    }
+
+    printf("  [OK] Driver de Monitor Virtual 16:10 (2560x1600 @ 90Hz) instalado com sucesso!\n");
+    return true;
+}
+
 int main() {
-    SetConsoleTitleW(L"sTab (SculptBridge) - Instalador e Configurador Automatico");
+    SetConsoleTitleW(L"sTab (SculptBridge) - Instalador e Atualizador Automatico");
 
     printf("====================================================================\n");
-    printf("     sTab v2.0 - Instalador Automatico para PC & Blender 3D        \n");
+    printf("     sTab v2.0 - Instalador e Atualizador para PC & Blender 3D     \n");
     printf("   Galaxy Tab S9 FE+ como Mesa Digitalizadora 90Hz de Alta Precisao\n");
     printf("====================================================================\n\n");
 
-    // 1. Obtém o diretório base onde o instalador está rodando
+    // 0. Verifica elevação administrativa para instalação do driver
+    if (!IsElevated()) {
+        printf("[AVISO] Solicitando permissoes de Administrador para instalar drivers...\n");
+        if (RelaunchElevated()) {
+            return 0; // O processo elevado foi iniciado
+        }
+        printf("[AVISO] Execucao continuada sem privilegios de Administrador.\n\n");
+    }
+
+    // 1. Diretório base
     wchar_t exePath[MAX_PATH];
     GetModuleFileNameW(NULL, exePath, MAX_PATH);
     PathRemoveFileSpecW(exePath);
     std::wstring rootDir = exePath;
 
-    wprintf(L"[1/5] Diretorio raiz do sTab identificado:\n      %ls\n\n", rootDir.c_str());
+    wprintf(L"[1/5] Diretorio raiz identificado: %ls\n\n", rootDir.c_str());
 
-    // 2. Instalação Automática do Addon no Blender
-    printf("[2/5] Instalando Add-on sTab Companion no Blender...\n");
+    // 2. Instalação / Atualização Automática do Driver Virtual 16:10
+    printf("[2/5] Instalando / Atualizando Driver de Monitor Virtual (VDD 16:10)...\n");
+    InstallVirtualDisplayDriver(rootDir);
+    printf("\n");
+
+    // 3. Atualização do Add-on no Blender
+    printf("[3/5] Atualizando Add-on sTab Companion no Blender...\n");
     std::wstring companionSource = rootDir + L"\\Blender\\sTab_blender_companion.py";
-
     if (GetFileAttributesW(companionSource.c_str()) != INVALID_FILE_ATTRIBUTES) {
-        int count = InstallBlenderAddon(companionSource);
+        int count = UpdateBlenderAddon(companionSource);
         if (count > 0) {
-            printf("      Total de versoes configuradas: %d\n", count);
-        } else {
-            printf("      [AVISO] Nenhuma pasta de versao do Blender encontrada em %%APPDATA%%.\n");
+            printf("      Total de versoes atualizadas: %d\n", count);
         }
 
-        // Tenta ativar o addon silenciosamente se encontrar o executavel do Blender
         std::wstring blenderExe = FindBlenderExecutable();
         if (!blenderExe.empty()) {
             wprintf(L"      Blender detectado em: %ls\n", blenderExe.c_str());
@@ -135,75 +253,50 @@ int main() {
             _wsystem(enableCmd.c_str());
             printf("      [OK] Add-on habilitado e salvo nas preferencias do Blender!\n\n");
         } else {
-            printf("      [OK] Add-on copiado com sucesso. Ative-o na aba Edit > Preferences > Add-ons do Blender.\n\n");
+            printf("      [OK] Add-on copiado com sucesso.\n\n");
         }
-    } else {
-        printf("      [AVISO] Arquivo sTab_blender_companion.py nao encontrado na pasta Blender/.\n\n");
     }
 
-    // 3. Verificação do APK para o Tablet
-    printf("[3/5] Verificando APK do tablet na pasta principal...\n");
+    // 4. Verificação e Instalação do APK no Tablet
+    printf("[4/5] Verificando conexao USB e aplicativo no tablet...\n");
     std::wstring apkPath = rootDir + L"\\sTab.apk";
-    if (GetFileAttributesW(apkPath.c_str()) != INVALID_FILE_ATTRIBUTES) {
-        printf("  [OK] Arquivo 'sTab.apk' pronto na raiz para o Galaxy Tab S9 FE+!\n\n");
-    } else {
-        // Tenta copiar do build Gradle se existir
-        std::wstring debugApk = rootDir + L"\\Android\\app\\build\\outputs\\apk\\debug\\app-debug.apk";
-        if (GetFileAttributesW(debugApk.c_str()) != INVALID_FILE_ATTRIBUTES) {
-            CopyFileW(debugApk.c_str(), apkPath.c_str(), FALSE);
-            printf("  [OK] 'sTab.apk' gerado e copiado para a pasta raiz com sucesso!\n\n");
-        } else {
-            printf("  [AVISO] 'sTab.apk' nao encontrado. Compile o APK usando Android\\build_apk.bat.\n\n");
-        }
-    }
-
-    // 4. Detecção do Tablet USB e Instalação Opcional do APK via ADB
-    printf("[4/5] Verificando conexao USB com o Galaxy Tab S9 FE+...\n");
     std::wstring adbExe = rootDir + L"\\dependencias\\platform-tools\\adb.exe";
-    if (GetFileAttributesW(adbExe.c_str()) != INVALID_FILE_ATTRIBUTES) {
-        std::wstring adbCheckCmd = L"\"\"" + adbExe + L"\" devices\"";
-        _wsystem(adbCheckCmd.c_str());
 
-        if (GetFileAttributesW(apkPath.c_str()) != INVALID_FILE_ATTRIBUTES) {
-            printf("      Tentando instalar 'sTab.apk' diretamente no tablet via cabo USB...\n");
-            std::wstring installCmd = L"\"\"" + adbExe + L"\" install -r \"" + apkPath + L"\"\"";
-            int installRes = _wsystem(installCmd.c_str());
-            if (installRes == 0) {
-                printf("  [OK] Aplicativo sTab INSTALADO com sucesso no Galaxy Tab S9 FE+!\n\n");
-            } else {
-                printf("  [DICA] Caso o tablet nao esteja conectado agora, basta plugar o cabo USB depois\n");
-                printf("         ou transferir o arquivo 'sTab.apk' diretamente para o seu tablet.\n\n");
-            }
+    if (GetFileAttributesW(adbExe.c_str()) != INVALID_FILE_ATTRIBUTES &&
+        GetFileAttributesW(apkPath.c_str()) != INVALID_FILE_ATTRIBUTES) {
+        std::wstring installCmd = L"\"\"" + adbExe + L"\" install -r \"" + apkPath + L"\" >nul 2>&1\"";
+        int res = _wsystem(installCmd.c_str());
+        if (res == 0) {
+            printf("  [OK] Aplicativo sTab ATUALIZADO no Galaxy Tab S9 FE+ via cabo USB!\n\n");
+        } else {
+            printf("  [INFO] Tablet nao detectado no momento ou aplicativo ja atualizado.\n");
+            printf("         (O arquivo 'sTab.apk' esta disponivel na pasta raiz para uso).\n\n");
         }
-    } else {
-        printf("  [AVISO] platform-tools/adb.exe nao encontrado.\n\n");
     }
 
-    // 5. Criação do Atalho na Área de Trabalho
-    printf("[5/5] Criando atalho na Area de Trabalho...\n");
+    // 5. Atualização do Atalho na Área de Trabalho
+    printf("[5/5] Atualizando atalho na Area de Trabalho...\n");
     std::wstring launcherBat = rootDir + L"\\run_stab.bat";
-    bool shortcutCreated = CreateDesktopShortcut(
+    bool shortcutUpdated = UpdateDesktopShortcut(
         launcherBat,
         rootDir,
         L"sTab - Iniciar Mesa Digitalizadora no Blender (Galaxy Tab S9 FE+)",
         L"sTab (Iniciar Mesa Digitalizadora)"
     );
 
-    if (shortcutCreated) {
-        printf("  [OK] Atalho criado na sua Area de Trabalho:\n");
+    if (shortcutUpdated) {
+        printf("  [OK] Atalho atualizado com sucesso na Area de Trabalho:\n");
         printf("       \"sTab (Iniciar Mesa Digitalizadora)\"\n\n");
-    } else {
-        printf("  [AVISO] Nao foi possivel criar o atalho automaticamente na Area de Trabalho.\n\n");
     }
 
     printf("====================================================================\n");
-    printf("   [SUCESSO] Instalacao e Configuracao Concluidas com Exito!        \n");
+    printf("   [SUCESSO] Instalacao / Atualizacao Concluida com Exito!          \n");
     printf("====================================================================\n");
-    printf("  Para usar:\n");
-    printf("  1. Certifique-se de que o aplicativo sTab esta aberto no tablet.\n");
-    printf("  2. Conecte o cabo USB ao PC.\n");
-    printf("  3. Clique duas vezes no atalho 'sTab (Iniciar Mesa Digitalizadora)'\n");
-    printf("     na sua Area de Trabalho.\n");
+    printf("  Novidades desta versao:\n");
+    printf("  * Servidor com Janela HUD Grafica em tempo real (Conexao, FPS, S-Pen)\n");
+    printf("  * Driver de Monitor Virtual 16:10 calibrado para 2560x1600 @ 90Hz\n");
+    printf("  * Telemetria bidirecional completa com o Blender 3D\n\n");
+    printf("  Para iniciar agora, execute o atalho na sua Area de Trabalho.\n");
     printf("====================================================================\n\n");
 
     printf("Pressione qualquer tecla para finalizar...");

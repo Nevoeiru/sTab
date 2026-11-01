@@ -101,6 +101,10 @@ void TcpServer::SetVideoControlCallback(VideoControlCallback cb) {
     m_videoControlCb = cb;
 }
 
+void TcpServer::SetInputPacketCallback(InputPacketCallback cb) {
+    m_inputPacketCb = cb;
+}
+
 DWORD WINAPI TcpServer::WorkerThreadProc(LPVOID lpParam) {
     TcpServer* server = static_cast<TcpServer*>(lpParam);
     server->RunWorker();
@@ -186,6 +190,10 @@ void TcpServer::HandleIncomingData(const uint8_t* buffer, int bytesReceived) {
 }
 
 void TcpServer::DispatchPacket(const InputPacket& packet) {
+    if (m_inputPacketCb) {
+        m_inputPacketCb(packet);
+    }
+
     switch (packet.packetType) {
         case PACKET_TYPE_PEN:
             if (m_injector) {

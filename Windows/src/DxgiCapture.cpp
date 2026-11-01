@@ -21,7 +21,7 @@ DxgiCapture::~DxgiCapture() {
     Shutdown();
 }
 
-bool DxgiCapture::CreateD3DDevice() {
+bool DxgiCapture::CreateD3DDevice(IDXGIAdapter* adapter) {
     D3D_FEATURE_LEVEL featureLevels[] = {
         D3D_FEATURE_LEVEL_11_1,
         D3D_FEATURE_LEVEL_11_0
@@ -29,10 +29,11 @@ bool DxgiCapture::CreateD3DDevice() {
     D3D_FEATURE_LEVEL featureLevel;
 
     UINT createFlags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
+    D3D_DRIVER_TYPE driverType = adapter ? D3D_DRIVER_TYPE_UNKNOWN : D3D_DRIVER_TYPE_HARDWARE;
 
     HRESULT hr = D3D11CreateDevice(
-        NULL,
-        D3D_DRIVER_TYPE_HARDWARE,
+        adapter,
+        driverType,
         NULL,
         createFlags,
         featureLevels,
@@ -57,52 +58,94 @@ bool DxgiCapture::SetupDuplication() {
         m_duplication = NULL;
     }
 
-    IDXGIDevice* dxgiDevice = NULL;
-    HRESULT hr = m_d3dDevice->QueryInterface(__uuidof(IDXGIDevice), (void**)&dxgiDevice);
-    if (FAILED(hr)) return false;
-
-    IDXGIAdapter* adapter = NULL;
-    hr = dxgiDevice->GetParent(__uuidof(IDXGIAdapter), (void**)&adapter);
-    dxgiDevice->Release();
-    if (FAILED(hr)) return false;
-
-    // Enumera todas as saídas de vídeo conectadas na GPU
-    IDXGIOutput* selectedOutput = NULL;
-    int selectedIndex = 0;
-    bool foundTarget1610 = false;
-
-    for (UINT i = 0; ; ++i) {
-        IDXGIOutput* curOutput = NULL;
-        if (adapter->EnumOutputs(i, &curOutput) == DXGI_ERROR_NOT_FOUND) {
-            break;
-        }
-
-        DXGI_OUTPUT_DESC desc;
-        curOutput->GetDesc(&desc);
-        int w = desc.DesktopCoordinates.right - desc.DesktopCoordinates.left;
-        int h = desc.DesktopCoordinates.bottom - desc.DesktopCoordinates.top;
-
-        // Se encontrar o monitor virtual 2560x1600 (VDD 16:10), seleciona com prioridade máxima
-        if (w == 2560 && h == 1600) {
-            if (selectedOutput) selectedOutput->Release();
-            selectedOutput = curOutput;
-            selectedIndex = i;
-            foundTarget1610 = true;
-            break;
-        } else if (!foundTarget1610 && selectedOutput == NULL) {
-            selectedOutput = curOutput;
-            selectedIndex = i;
-        } else {
-            curOutput->Release();
-        }
+    // 1. Vincula a thread ao Desktop de entrada ativo (resolve erro 0x80070005)
+    HDESK hDesk = OpenInputDesktop(0, FALSE, GENERIC_ALL);
+    if (hDesk) {
+        SetThreadDesktop(hDesk);
+        CloseDesktop(hDesk);
     }
 
-    adapter->Release();
-
-    if (!selectedOutput) {
-        printf("[DxgiCapture] Nenhum monitor de saida detectado para duplicacao.\n");
+    IDXGIFactory1* factory = NULL;
+    HRESULT hr = CreateDXGIFactory1(__uuidof(IDXGIFactory1), (void**)&factory);
+    if (FAILED(hr)) {
+        printf("[DxgiCapture] Erro ao criar DXGIFactory1 (hr: 0x%08lX)\n", hr);
         return false;
     }
+
+    IDXGIAdapter1* selectedAdapter = NULL;
+    IDXGIOutput* selectedOutput = NULL;
+    int selectedAdapterIndex = 0;
+    int selectedOutputIndex = 0;
+    bool foundTarget1610 = false;
+
+    for (UINT a = 0; ; ++a) {
+        IDXGIAdapter1* curAdapter = NULL;
+        if (factory->EnumAdapters1(a, &curAdapter) == DXGI_ERROR_NOT_FOUND) break;
+
+        DXGI_ADAPTER_DESC1 aDesc;
+        curAdapter->GetDesc1(&aDesc);
+        if (aDesc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) {
+            curAdapter->Release();
+            continue;
+        }
+
+        for (UINT o = 0; ; ++o) {
+            IDXGIOutput* curOutput = NULL;
+            if (curAdapter->EnumOutputs(o, &curOutput) == DXGI_ERROR_NOT_FOUND) break;
+
+            DXGI_OUTPUT_DESC oDesc;
+            curOutput->GetDesc(&oDesc);
+            int w = oDesc.DesktopCoordinates.right - oDesc.DesktopCoordinates.left;
+            int h = oDesc.DesktopCoordinates.bottom - oDesc.DesktopCoordinates.top;
+
+            if (w == 2560 && h == 1600) {
+                if (selectedOutput) selectedOutput->Release();
+                if (selectedAdapter) selectedAdapter->Release();
+                selectedOutput = curOutput;
+                selectedAdapter = curAdapter;
+                selectedAdapterIndex = a;
+                selectedOutputIndex = o;
+                foundTarget1610 = true;
+                break;
+            } else if (!foundTarget1610 && selectedOutput == NULL) {
+                selectedOutput = curOutput;
+                selectedAdapter = curAdapter;
+                curAdapter->AddRef();
+                selectedAdapterIndex = a;
+                selectedOutputIndex = o;
+            } else {
+                curOutput->Release();
+            }
+        }
+
+        if (foundTarget1610) break;
+        curAdapter->Release();
+    }
+    factory->Release();
+
+    if (!selectedOutput || !selectedAdapter) {
+        printf("[DxgiCapture] Nenhum monitor de saida detectado para duplicacao.\n");
+        if (selectedOutput) selectedOutput->Release();
+        if (selectedAdapter) selectedAdapter->Release();
+        return false;
+    }
+
+    // Cria o D3D11Device no adapter correto que possui a saida
+    if (m_d3dDevice) {
+        m_d3dDevice->Release();
+        m_d3dDevice = NULL;
+    }
+    if (m_d3dContext) {
+        m_d3dContext->Release();
+        m_d3dContext = NULL;
+    }
+
+    if (!CreateD3DDevice(selectedAdapter)) {
+        selectedOutput->Release();
+        selectedAdapter->Release();
+        return false;
+    }
+    selectedAdapter->Release();
 
     DXGI_OUTPUT_DESC outputDesc;
     selectedOutput->GetDesc(&outputDesc);
@@ -113,9 +156,11 @@ bool DxgiCapture::SetupDuplication() {
     m_isUsingVirtualDisplay = foundTarget1610;
 
     if (foundTarget1610) {
-        printf("[DxgiCapture] Monitor Virtual 16:10 nativo detectado (Output %d: 2560x1600 @ 90Hz)!\n", selectedIndex);
+        printf("[DxgiCapture] Monitor Virtual 16:10 detectado (Adapter %d, Output %d: 2560x1600 @ 90Hz)!\n",
+               selectedAdapterIndex, selectedOutputIndex);
     } else {
-        printf("[DxgiCapture] Utilizando saida de video (Output %d: %dx%d).\n", selectedIndex, m_width, m_height);
+        printf("[DxgiCapture] Utilizando saida de video (Adapter %d, Output %d: %dx%d).\n",
+               selectedAdapterIndex, selectedOutputIndex, m_width, m_height);
     }
 
     IDXGIOutput1* output1 = NULL;
@@ -131,7 +176,7 @@ bool DxgiCapture::SetupDuplication() {
         return false;
     }
 
-    // Cria textura D3D11 de retenção para sustentar cadência estável durante cenas estáticas
+    // Cria textura D3D11 de retencao para sustentar cadencia estavel durante cenas estaticas
     if (m_lastFrameTexture) {
         m_lastFrameTexture->Release();
         m_lastFrameTexture = NULL;
@@ -154,7 +199,13 @@ bool DxgiCapture::SetupDuplication() {
 bool DxgiCapture::Initialize() {
     if (m_initialized) return true;
 
-    if (!CreateD3DDevice()) return false;
+    // Vincula a thread ao Desktop de entrada ativo
+    HDESK hDesk = OpenInputDesktop(0, FALSE, GENERIC_ALL);
+    if (hDesk) {
+        SetThreadDesktop(hDesk);
+        CloseDesktop(hDesk);
+    }
+
     if (!SetupDuplication()) return false;
 
     m_initialized = true;

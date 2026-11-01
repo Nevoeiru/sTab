@@ -48,9 +48,10 @@ public:
     ID3D11Device* GetDevice() const { return m_d3dDevice; }
     ID3D11DeviceContext* GetContext() const { return m_d3dContext; }
     bool IsInitialized() const { return m_initialized; }
+    bool IsUsingVirtualDisplay() const { return m_isUsingVirtualDisplay; }
 
 private:
-    bool CreateD3DDevice();
+    bool CreateD3DDevice(IDXGIAdapter* adapter = NULL);
     bool SetupDuplication();
 
     ID3D11Device*           m_d3dDevice;

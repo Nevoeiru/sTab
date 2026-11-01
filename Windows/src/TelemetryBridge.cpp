@@ -156,6 +156,43 @@ void TelemetryBridge::RunUdpListener() {
             int bytes = recvfrom(m_udpSocket, buffer, sizeof(buffer) - 2, 0, (sockaddr*)&senderAddr, &addrLen);
 
             if (bytes > 0) {
+                // Parse simplificado dos campos essenciais do Blender para a HUD
+                if (m_blenderCb) {
+                    char brush[64] = "Clay";
+                    float size = 50.0f;
+                    float strength = 0.5f;
+                    bool symX = false;
+
+                    const char* pBrush = strstr(buffer, "\"brush\": \"");
+                    if (pBrush) {
+                        pBrush += 10;
+                        const char* pEnd = strchr(pBrush, '\"');
+                        if (pEnd) {
+                            int len = (int)(pEnd - pBrush);
+                            if (len > 63) len = 63;
+                            strncpy(brush, pBrush, len);
+                            brush[len] = '\0';
+                        }
+                    }
+
+                    const char* pSize = strstr(buffer, "\"size\": ");
+                    if (pSize) {
+                        size = (float)atof(pSize + 8);
+                    }
+
+                    const char* pStr = strstr(buffer, "\"strength\": ");
+                    if (pStr) {
+                        strength = (float)atof(pStr + 12);
+                    }
+
+                    const char* pSym = strstr(buffer, "\"symmetry_x\": ");
+                    if (pSym) {
+                        symX = (strncmp(pSym + 14, "true", 4) == 0);
+                    }
+
+                    m_blenderCb(brush, size, strength, symX);
+                }
+
                 // Adiciona delimitador newline para facilitar a leitura no Android
                 if (buffer[bytes - 1] != '\n') {
                     buffer[bytes] = '\n';

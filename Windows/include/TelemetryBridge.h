@@ -7,6 +7,12 @@
 #include <winsock2.h>
 #include <windows.h>
 #include <cstdint>
+#include <functional>
+
+/**
+ * @brief Callback para dados de pincel do Blender.
+ */
+typedef std::function<void(const char* brush, float size, float strength, bool symX)> BlenderDataCallback;
 
 /**
  * @brief Ponte de telemetria bidirecional do Blender para o Galaxy Tab S9 FE+.
@@ -20,6 +26,8 @@ public:
 
     bool Start();
     void Stop();
+
+    void SetBlenderDataCallback(BlenderDataCallback cb) { m_blenderCb = cb; }
 
     bool IsTabletConnected() const { return m_tabletConnected; }
 
@@ -40,6 +48,7 @@ private:
 
     volatile bool   m_running;
     volatile bool   m_tabletConnected;
+    BlenderDataCallback m_blenderCb;
 };
 
 #endif // STAB_TELEMETRY_BRIDGE_H

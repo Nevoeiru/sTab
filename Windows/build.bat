@@ -24,13 +24,14 @@ g++ -std=c++17 -O3 -Wall -Wextra -I"%SCRIPT_DIR%include" ^
     "%SCRIPT_DIR%src\H264Encoder.cpp" ^
     "%SCRIPT_DIR%src\VideoServer.cpp" ^
     "%SCRIPT_DIR%src\TelemetryBridge.cpp" ^
+    "%SCRIPT_DIR%src\ServerHud.cpp" ^
     -o "%SCRIPT_DIR%bin\sTab_server.exe" ^
-    -lws2_32 -luser32 -ld3d11 -ldxgi -lmfplat -lmfuuid -lole32 -loleaut32 -static -s
+    -lws2_32 -luser32 -lgdi32 -ldwmapi -ld3d11 -ldxgi -lmfplat -lmfuuid -lole32 -loleaut32 -lshlwapi -static -s
 
 g++ -std=c++17 -O3 -Wall -Wextra -I"%SCRIPT_DIR%include" ^
     "%SCRIPT_DIR%src\sTab_launcher.cpp" ^
     -o "%SCRIPT_DIR%bin\sTab_launcher.exe" ^
-    -static -s
+    -lshlwapi -static -s
 
 g++ -std=c++17 -O3 -Wall -Wextra ^
     "%SCRIPT_DIR%src\sTab_setup.cpp" ^
