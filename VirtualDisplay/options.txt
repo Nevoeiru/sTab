@@ -1,0 +1,13 @@
+# ====================================================================
+#   sTab (SculptBridge) - Configuracao de Display Virtual 16:10
+#   Perfil calibrado para Samsung Galaxy Tab S9 FE+ no Windows 11
+# ====================================================================
+# Formato: Largura, Altura, TaxaDeAtualizacao
+
+# 1. Resolucao Nativa Exata do Galaxy Tab S9 FE+ (12.4" WQXGA @ 90Hz)
+2560, 1600, 90
+
+# Modos complementares de desempenho e economia
+2560, 1600, 60
+1920, 1200, 90
+1920, 1200, 60

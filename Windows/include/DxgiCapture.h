@@ -55,11 +55,13 @@ private:
     ID3D11DeviceContext*    m_d3dContext;
     IDXGIOutputDuplication* m_duplication;
     ID3D11Texture2D*        m_stagingTexture;
+    ID3D11Texture2D*        m_lastFrameTexture;
 
     int m_width;
     int m_height;
     bool m_initialized;
     bool m_hasAcquiredFrame;
+    bool m_isUsingVirtualDisplay;
 };
 
 #endif // STAB_DXGI_CAPTURE_H
