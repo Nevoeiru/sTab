@@ -7,10 +7,13 @@ PointerInjector::PointerInjector()
     , m_pfnCreate(NULL)
     , m_pfnInject(NULL)
     , m_pfnDestroy(NULL)
+    , m_pfnSetFeedback(NULL)
     , m_initialized(false)
     , m_wasTipDown(false)
     , m_wasHovering(false)
     , m_wasBarrelPressed(false)
+    , m_isModalNavigationActive(false)
+    , m_lastSuppressedHwnd(NULL)
     , m_targetX(0)
     , m_targetY(0)
     , m_targetWidth(1920)
@@ -32,6 +35,7 @@ bool PointerInjector::LoadSyntheticPointerApis() {
     m_pfnCreate = reinterpret_cast<pfnCreateSyntheticPointerDevice>(reinterpret_cast<void*>(GetProcAddress(m_hUser32, "CreateSyntheticPointerDevice")));
     m_pfnInject = reinterpret_cast<pfnInjectSyntheticPointerInput>(reinterpret_cast<void*>(GetProcAddress(m_hUser32, "InjectSyntheticPointerInput")));
     m_pfnDestroy = reinterpret_cast<pfnDestroySyntheticPointerDevice>(reinterpret_cast<void*>(GetProcAddress(m_hUser32, "DestroySyntheticPointerDevice")));
+    m_pfnSetFeedback = reinterpret_cast<pfnSetWindowFeedbackSetting>(reinterpret_cast<void*>(GetProcAddress(m_hUser32, "SetWindowFeedbackSetting")));
 
     if (!m_pfnCreate || !m_pfnInject || !m_pfnDestroy) {
         printf("[PointerInjector] SyntheticPointer APIs nao disponiveis nesta versao do Windows.\n");
@@ -87,10 +91,13 @@ void PointerInjector::Shutdown() {
     m_pfnCreate = NULL;
     m_pfnInject = NULL;
     m_pfnDestroy = NULL;
+    m_pfnSetFeedback = NULL;
     m_initialized = false;
     m_wasTipDown = false;
     m_wasHovering = false;
     m_wasBarrelPressed = false;
+    m_isModalNavigationActive = false;
+    m_lastSuppressedHwnd = NULL;
 }
 
 void PointerInjector::SetTargetDisplayBounds(int x, int y, int width, int height) {
@@ -99,6 +106,53 @@ void PointerInjector::SetTargetDisplayBounds(int x, int y, int width, int height
         m_targetY = y;
         m_targetWidth = width;
         m_targetHeight = height;
+    }
+}
+
+void PointerInjector::SuppressPressAndHoldLatency(HWND hWnd) {
+    if (!hWnd || !IsWindow(hWnd)) return;
+
+    DWORD dwTabletFlags = TABLET_DISABLE_PRESSANDHOLD |
+                          TABLET_DISABLE_PENTAPFEEDBACK |
+                          TABLET_DISABLE_PENBARRELFEEDBACK |
+                          TABLET_DISABLE_FLICKS;
+
+    // Registra a propriedade Win32 na janela do Blender para suprimir o atraso de 150-250ms
+    SetPropW(hWnd, L"MicrosoftTabletPenServiceProperty", (HANDLE)(ULONG_PTR)dwTabletFlags);
+
+    // Desativa a animação visual de anel do cursor no Windows
+    if (m_pfnSetFeedback) {
+        BOOL bDisable = FALSE;
+        m_pfnSetFeedback(hWnd, (DWORD)FEEDBACK_PEN_PRESSANDHOLD, 0, sizeof(bDisable), &bDisable);
+    }
+
+    m_lastSuppressedHwnd = hWnd;
+}
+
+void PointerInjector::EnsureWindowLatencySuppressed(int screenX, int screenY) {
+    POINT pt = { screenX, screenY };
+    HWND hWnd = WindowFromPoint(pt);
+    if (hWnd) {
+        HWND hRoot = GetAncestor(hWnd, GA_ROOT);
+        if (hRoot && hRoot != m_lastSuppressedHwnd) {
+            SuppressPressAndHoldLatency(hRoot);
+        }
+    }
+}
+
+void PointerInjector::SetModalNavigationActive(bool active) {
+    m_isModalNavigationActive = active;
+    if (active && m_wasTipDown) {
+        // Se a navegação 3D foi iniciada enquanto a ponta estava abaixada, força POINTER_FLAG_UP
+        if (m_hDevice && m_pfnInject) {
+            POINTER_TYPE_INFO pti = {};
+            pti.type = PT_PEN;
+            pti.penInfo.pointerInfo.pointerType = PT_PEN;
+            pti.penInfo.pointerInfo.pointerId = 0;
+            pti.penInfo.pointerInfo.pointerFlags = POINTER_FLAG_UP;
+            m_pfnInject(m_hDevice, &pti, 1);
+        }
+        m_wasTipDown = false;
     }
 }
 
@@ -129,9 +183,18 @@ bool PointerInjector::InjectPen(const InputPacket& packet) {
         return false;
     }
 
+    // Trava Modal: Durante navegação 3D ativa (órbita, pan com Shift ou zoom),
+    // a injeção da S-Pen é sumariamente suspensa para evitar pinceladas acidentais
+    if (m_isModalNavigationActive) {
+        return false;
+    }
+
     // Mapeamento normalizado (0..65535) para as coordenadas de tela do host
     int screenX = m_targetX + (int)(((int64_t)packet.x * m_targetWidth) / 65535);
     int screenY = m_targetY + (int)(((int64_t)packet.y * m_targetHeight) / 65535);
+
+    // Garante supressão de Press-and-Hold na janela de escultura sob a ponta da caneta
+    EnsureWindowLatencySuppressed(screenX, screenY);
 
     bool isHovering = (packet.flags & FLAG_PEN_HOVER) != 0;
     bool isTipDown  = (packet.flags & FLAG_PEN_CONTACT) != 0;

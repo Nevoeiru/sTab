@@ -6,11 +6,15 @@
 #endif
 #include <winsock2.h>
 #include <windows.h>
+#include <functional>
 #include "Protocol.h"
+
+typedef std::function<void(bool isNavigating)> OnModalNavigationChangedCallback;
 
 /**
  * @brief Tradutor de gestos de toque de dedo e comandos da barra lateral SculptPad.
- * Emite eventos Win32 de mouse e teclado (SendInput) otimizados para a câmera do Blender.
+ * Emite eventos Win32 de mouse e teclado (SendInput) otimizados para a câmera do Blender
+ * e notifica a trava modal para suprimir injeções concorrentes de caneta.
  */
 class GestureTranslator {
 public:
@@ -28,9 +32,16 @@ public:
     void ProcessSculptPadAction(const InputPacket& packet);
 
     /**
+     * @brief Define o callback de notificação de início/fim de navegação de câmera 3D.
+     */
+    void SetNavigationStateCallback(OnModalNavigationChangedCallback cb) { m_onNavStateChanged = cb; }
+
+    /**
      * @brief Libera qualquer tecla ou botão do mouse retido (útil em desconexão do tablet).
      */
     void ResetAllInputStates();
+
+    bool IsModalNavigationActive() const { return m_isOrbitActive || m_isPanActive; }
 
 private:
     void SendMouseMiddle(bool down);
@@ -39,6 +50,9 @@ private:
     void SendKey(WORD vkCode, bool down);
     void TriggerKeyCombination(WORD vk1, WORD vk2);
     void TriggerKeyCombination(WORD vk1, WORD vk2, WORD vk3);
+    void NotifyNavigationState(bool isNavigating);
+
+    OnModalNavigationChangedCallback m_onNavStateChanged;
 
     bool m_isOrbitActive;
     bool m_isPanActive;

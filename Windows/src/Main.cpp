@@ -29,7 +29,7 @@ int RunSelfTest() {
     printf("==================================================\n");
 
     // 1. Validacao do tamanho do pacote binario de protocolo
-    printf("[1/7] Verificando alinhamento de struct InputPacket... ");
+    printf("[1/8] Verificando alinhamento de struct InputPacket... ");
     if (sizeof(InputPacket) == 16) {
         printf("OK (Exatamente 16 bytes)\n");
     } else {
@@ -38,7 +38,7 @@ int RunSelfTest() {
     }
 
     // 2. Validacao do PointerInjector (Windows Ink)
-    printf("[2/7] Inicializando PointerInjector (user32 Synthetic Pointer)... ");
+    printf("[2/8] Inicializando PointerInjector (user32 Synthetic Pointer)... ");
     PointerInjector injector;
     if (injector.Initialize()) {
         printf("OK\n");
@@ -47,25 +47,51 @@ int RunSelfTest() {
         return 2;
     }
 
-    // 3. Validacao do GestureTranslator
-    printf("[3/7] Inicializando GestureTranslator... ");
+    // 3. Validacao do GestureTranslator e da Trava Modal com o PointerInjector
+    printf("[3/8] Inicializando GestureTranslator e Trava Modal... ");
     GestureTranslator translator;
     translator.ResetAllInputStates();
-    printf("OK\n");
+    
+    // Conecta a trava modal
+    translator.SetNavigationStateCallback([&injector](bool isNavigating) {
+        injector.SetModalNavigationActive(isNavigating);
+    });
 
-    // 4. Teste de bind do socket TCP de entrada (27183)
-    printf("[4/7] Testando socket TCP de telemetria em 127.0.0.1:27183... ");
+    // Testa se a trava modal bloqueia injeções concorrentes durante navegação 3D
+    injector.SetModalNavigationActive(true);
+    InputPacket testPacket = {};
+    testPacket.packetType = PACKET_TYPE_PEN;
+    testPacket.flags = FLAG_PEN_CONTACT;
+    testPacket.x = 32768;
+    testPacket.y = 32768;
+    testPacket.pressure = 2048;
+    if (injector.InjectPen(testPacket) == false) {
+        injector.SetModalNavigationActive(false);
+        printf("OK (Trava modal de navegacao 3D ativa)\n");
+    } else {
+        printf("FALHA na trava modal!\n");
+        return 3;
+    }
+
+    // 4. Teste da supressão Win32 de Press-and-Hold (latência 150-250ms)
+    printf("[4/8] Testando supressao Win32 de Press-and-Hold (SetPropW)... ");
+    HWND hDesktop = GetDesktopWindow();
+    injector.SuppressPressAndHoldLatency(hDesktop);
+    printf("OK (TABLET_DISABLE_PRESSANDHOLD aplicado)\n");
+
+    // 5. Teste de bind do socket TCP de entrada (27183)
+    printf("[5/8] Testando socket TCP de telemetria em 127.0.0.1:27183... ");
     TcpServer server(27183);
     if (server.Start(&injector, &translator)) {
         printf("OK (Socket escutando)\n");
         server.Stop();
     } else {
         printf("FALHA ao abrir socket de telemetria!\n");
-        return 4;
+        return 5;
     }
 
-    // 5. Teste do capturador de tela DXGI GPU
-    printf("[5/7] Testando capturador DXGI Desktop Duplication... ");
+    // 6. Teste do capturador de tela DXGI GPU
+    printf("[6/8] Testando capturador DXGI Desktop Duplication... ");
     DxgiCapture capture;
     if (capture.Initialize()) {
         printf("OK (Resolucao detectada: %dx%d)\n", capture.GetWidth(), capture.GetHeight());
@@ -73,8 +99,8 @@ int RunSelfTest() {
         printf("AVISO (Desktop Duplication requer display ativo na GPU)\n");
     }
 
-    // 6. Teste do codificador H.264 por hardware (Media Foundation)
-    printf("[6/7] Testando codificador Media Foundation H.264 Low-Latency... ");
+    // 7. Teste do codificador H.264 por hardware (Media Foundation)
+    printf("[7/8] Testando codificador Media Foundation H.264 Low-Latency... ");
     H264Encoder encoder;
     if (encoder.Initialize(1920, 1080, 90)) {
         encoder.ForceKeyFrame();
@@ -84,15 +110,15 @@ int RunSelfTest() {
         printf("AVISO (Hardware H.264 MFT depende de suporte do driver grafico)\n");
     }
 
-    // 7. Teste do servidor de streaming de video (27184)
-    printf("[7/7] Testando socket TCP de streaming de video em 127.0.0.1:27184... ");
+    // 8. Teste do servidor de streaming de video (27184)
+    printf("[8/8] Testando socket TCP de streaming de video em 127.0.0.1:27184... ");
     VideoServer videoServer(27184);
     if (videoServer.Start()) {
         printf("OK (Socket de video escutando)\n");
         videoServer.Stop();
     } else {
         printf("FALHA ao abrir socket de video!\n");
-        return 7;
+        return 8;
     }
 
     capture.Shutdown();
@@ -105,6 +131,17 @@ int RunSelfTest() {
 }
 
 int main(int argc, char* argv[]) {
+    // 0. Configura Per-Monitor DPI Awareness v2 para precisao absoluta de coordenadas fisicas
+    HMODULE hUser32Dpi = LoadLibraryW(L"user32.dll");
+    if (hUser32Dpi) {
+        typedef BOOL (WINAPI *pfnSetDpiAwareness)(void*);
+        auto setDpi = (pfnSetDpiAwareness)(void*)GetProcAddress(hUser32Dpi, "SetProcessDpiAwarenessContext");
+        if (setDpi) {
+            setDpi((void*)-4); // DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
+        }
+        FreeLibrary(hUser32Dpi);
+    }
+
     // Modo de autoteste automatizado
     if (argc > 1 && strcmp(argv[1], "--test") == 0) {
         return RunSelfTest();
@@ -114,12 +151,13 @@ int main(int argc, char* argv[]) {
     SetConsoleCtrlHandler(ConsoleCtrlHandler, TRUE);
 
     printf("===============================================================\n");
-    printf("  sTab (SculptBridge) - Servidor Windows Ink & Video 90Hz v1.0 \n");
+    printf("  sTab (SculptBridge) - Servidor Windows Ink & Video 90Hz v2.0 \n");
     printf("===============================================================\n");
     printf("  Dispositivo alvo: Galaxy Tab S9 FE+ (12.4\" 2560x1600 @ 90Hz)\n");
     printf("  Canal de Entrada: Porta 27183 (Windows Ink 4096 niveis + RMB) \n");
     printf("  Canal de Video:   Porta 27184 (H.264 NVENC/MF 90 FPS Baixa Lat)\n");
     printf("  Recuperacao:      Canal Reverso REQUEST_IDR Ativo             \n");
+    printf("  Otimizacao Win32: Supressao Press-and-Hold + Trava Modal Ativas\n");
     printf("===============================================================\n\n");
 
     // 1. Inicializa o motor de entrada S-Pen e Gestos
@@ -130,6 +168,12 @@ int main(int argc, char* argv[]) {
     }
 
     GestureTranslator translator;
+
+    // Vincula a trava modal de navegacao de camera 3D com a injecao de caneta
+    translator.SetNavigationStateCallback([&injector](bool isNavigating) {
+        injector.SetModalNavigationActive(isNavigating);
+    });
+
     TcpServer tcpServer(27183);
 
     // 2. Inicializa o pipeline de captura e streaming de vídeo

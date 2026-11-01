@@ -2,7 +2,8 @@
 #include <stdio.h>
 
 GestureTranslator::GestureTranslator()
-    : m_isOrbitActive(false)
+    : m_onNavStateChanged(nullptr)
+    , m_isOrbitActive(false)
     , m_isPanActive(false)
     , m_isShiftHeld(false)
     , m_isCtrlHeld(false)
@@ -14,6 +15,12 @@ GestureTranslator::GestureTranslator()
 
 GestureTranslator::~GestureTranslator() {
     ResetAllInputStates();
+}
+
+void GestureTranslator::NotifyNavigationState(bool isNavigating) {
+    if (m_onNavStateChanged) {
+        m_onNavStateChanged(isNavigating);
+    }
 }
 
 void GestureTranslator::SendMouseMiddle(bool down) {
@@ -81,7 +88,8 @@ void GestureTranslator::ProcessTouchGesture(const InputPacket& packet) {
     switch (gestureType) {
         case GESTURE_ORBIT_DRAG:
             if (gesturePhase == 0) {
-                // Inicia rotação de câmera 3D no Blender
+                // Inicia rotação de câmera 3D no Blender e ativa trava modal
+                NotifyNavigationState(true);
                 SendMouseMiddle(true);
                 m_isOrbitActive = true;
             } else if (gesturePhase == 1) {
@@ -89,12 +97,14 @@ void GestureTranslator::ProcessTouchGesture(const InputPacket& packet) {
             } else if (gesturePhase == 2) {
                 SendMouseMiddle(false);
                 m_isOrbitActive = false;
+                NotifyNavigationState(false);
             }
             break;
 
         case GESTURE_PAN_DRAG:
             if (gesturePhase == 0) {
-                // Inicia Pan de câmera (Shift + MMB)
+                // Inicia Pan de câmera (Shift + MMB) e ativa trava modal
+                NotifyNavigationState(true);
                 SendKey(VK_SHIFT, true);
                 SendMouseMiddle(true);
                 m_isPanActive = true;
@@ -104,6 +114,7 @@ void GestureTranslator::ProcessTouchGesture(const InputPacket& packet) {
                 SendMouseMiddle(false);
                 SendKey(VK_SHIFT, false);
                 m_isPanActive = false;
+                NotifyNavigationState(false);
             }
             break;
 
@@ -134,6 +145,7 @@ void GestureTranslator::ProcessTouchGesture(const InputPacket& packet) {
                 SendKey(VK_SHIFT, false);
                 m_isPanActive = false;
             }
+            NotifyNavigationState(false);
             break;
 
         default:
@@ -234,5 +246,6 @@ void GestureTranslator::ResetAllInputStates() {
         SendKey(VK_MENU, false);
         m_isAltHeld = false;
     }
+    NotifyNavigationState(false);
 }
 
