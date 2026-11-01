@@ -42,7 +42,6 @@ class MainActivity : Activity() {
 
     private lateinit var rootContainer: LinearLayout
     private lateinit var viewportContainer: AspectViewportLayout
-    private lateinit var toolHoverBadge: ToolHoverBadge
     private lateinit var expandTab: FloatingExpandTab
     private var isLeftHandMode = false
 
@@ -57,24 +56,13 @@ class MainActivity : Activity() {
 
         // 3. Inicializa cliente USB e despachante
         usbClient = UsbSocketClient()
-        dispatcher = SculptTouchDispatcher(usbClient).apply {
-            onHoverStateChanged = { isHovering ->
-                runOnUiThread {
-                    if (isHovering) {
-                        toolHoverBadge.showBadge()
-                    } else {
-                        toolHoverBadge.hideBadge()
-                    }
-                }
-            }
-        }
+        dispatcher = SculptTouchDispatcher(usbClient)
 
         // 3.1. Inicializa o cliente de telemetria bidirecional do Blender
         telemetryClient = TelemetryClient().apply {
             onTelemetryReceived = { data ->
                 runOnUiThread {
                     sculptPad.updateBrushTelemetry(data)
-                    toolHoverBadge.updateToolInfo(data.brushName, data.size.toFloat(), data.strength)
                 }
             }
         }
@@ -109,24 +97,11 @@ class MainActivity : Activity() {
             visibility = android.view.View.GONE
         }
 
-        toolHoverBadge = ToolHoverBadge(this).apply {
-            val density = resources.displayMetrics.density
-            val badgeParams = FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            ).apply {
-                topMargin = (16 * density).toInt()
-            }
-            layoutParams = badgeParams
-        }
-
         viewportContainer = AspectViewportLayout(this).apply {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f)
             addView(videoSurfaceView)
             addView(canvasView)
             addView(radiusOverlay)
-            addView(toolHoverBadge)
         }
 
         // 5. Cria a barra lateral tátil compacta SculptPad (54dp de largura)
@@ -199,20 +174,6 @@ class MainActivity : Activity() {
                 Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
             }
         }
-    }
-
-    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-        // Garante que o toque de dedo nos botões laterais seja sempre entregue, mesmo com S-Pen em hover ou toque
-        if (::sculptPad.isInitialized && sculptPad.visibility == android.view.View.VISIBLE &&
-            ev.getToolType(ev.actionIndex) == MotionEvent.TOOL_TYPE_FINGER) {
-            val padLoc = IntArray(2)
-            sculptPad.getLocationOnScreen(padLoc)
-            val padRect = Rect(padLoc[0], padLoc[1], padLoc[0] + sculptPad.width, padLoc[1] + sculptPad.height)
-            if (padRect.contains(ev.rawX.toInt(), ev.rawY.toInt())) {
-                return sculptPad.dispatchTouchEvent(ev)
-            }
-        }
-        return super.dispatchTouchEvent(ev)
     }
 
     private fun assembleLayout() {

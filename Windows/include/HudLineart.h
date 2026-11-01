@@ -16,3 +16,4 @@ public:
     static void DrawBlenderCube(HDC hdc, int x, int y);
     static void DrawOmnitomeEmblem(HDC hdc, int x, int y);
 };
+

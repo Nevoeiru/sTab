@@ -51,3 +51,4 @@ void HudLineart::DrawOmnitomeEmblem(HDC hdc, int x, int y) {
     SelectObject(hdc, old);
     DeleteObject(pen);
 }
+
