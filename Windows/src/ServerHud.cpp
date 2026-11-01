@@ -470,3 +470,4 @@ void ServerHud::Render(HDC hdc) {
     DeleteObject(memBmp);
     DeleteDC(memDC);
 }
+

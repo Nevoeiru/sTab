@@ -83,3 +83,4 @@ private:
     HFONT m_fontBold;
     HFONT m_fontMono;
 };
+
