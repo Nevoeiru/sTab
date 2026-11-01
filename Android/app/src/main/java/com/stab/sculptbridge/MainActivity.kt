@@ -11,6 +11,7 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.Toast
+import com.stab.sculptbridge.ui.AspectViewportLayout
 import com.stab.sculptbridge.ui.RadiusOverlayView
 import com.stab.sculptbridge.ui.SculptPadLayout
 import com.stab.sculptbridge.video.VideoDecoder
@@ -89,16 +90,16 @@ class MainActivity : Activity() {
             visibility = android.view.View.GONE
         }
 
-        viewportContainer = FrameLayout(this).apply {
+        viewportContainer = AspectViewportLayout(this).apply {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f)
             addView(videoSurfaceView)
             addView(canvasView)
             addView(radiusOverlay)
         }
 
-        // 5. Cria a barra lateral tátil SculptPad (~220dp de largura)
+        // 5. Cria a barra lateral tátil compacta SculptPad (54dp de largura)
         val density = resources.displayMetrics.density
-        val padWidthPx = (220 * density).toInt()
+        val padWidthPx = (54 * density).toInt()
 
         sculptPad = SculptPadLayout(
             context = this,

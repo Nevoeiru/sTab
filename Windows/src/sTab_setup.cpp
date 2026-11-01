@@ -173,11 +173,15 @@ bool InstallVirtualDisplayDriver(const std::wstring& rootDir) {
         CopyFileW(devconSrc.c_str(), (vddDest + L"\\devcon.exe").c_str(), FALSE);
     }
 
-    // Copia o arquivo de calibracao 16:10 options.txt
+    // Copia o arquivo de calibracao options.txt e vdd_settings.xml
     std::wstring optionsSrc = rootDir + L"\\VirtualDisplay\\options.txt";
     if (GetFileAttributesW(optionsSrc.c_str()) != INVALID_FILE_ATTRIBUTES) {
         CopyFileW(optionsSrc.c_str(), (vddDest + L"\\options.txt").c_str(), FALSE);
         CopyFileW(optionsSrc.c_str(), (vddDest + L"\\option.txt").c_str(), FALSE);
+    }
+    std::wstring vddXmlSrc = rootDir + L"\\VirtualDisplay\\driver\\VirtualDisplayDriver\\vdd_settings.xml";
+    if (GetFileAttributesW(vddXmlSrc.c_str()) != INVALID_FILE_ATTRIBUTES) {
+        CopyFileW(vddXmlSrc.c_str(), (vddDest + L"\\vdd_settings.xml").c_str(), FALSE);
     }
 
     // Registra a chave no Windows Registry (SOFTWARE\MikeTheTech\VirtualDisplayDriver -> VDDPATH)
@@ -192,15 +196,26 @@ bool InstallVirtualDisplayDriver(const std::wstring& rootDir) {
     std::wstring pnpCmd = L"pnputil /add-driver \"C:\\VirtualDisplayDriver\\MttVDD.inf\" /install >nul 2>&1";
     _wsystem(pnpCmd.c_str());
 
-    // 2. Instancia o dispositivo de exibição indireta Root\MttVDD via devcon
+    // 2. Instancia ou atualiza o dispositivo de exibição indireta Root\MttVDD via devcon
     std::wstring devconExe = vddDest + L"\\devcon.exe";
     if (GetFileAttributesW(devconExe.c_str()) != INVALID_FILE_ATTRIBUTES) {
-        printf("      Instanciando dispositivo de Monitor Virtual (Root\\MttVDD)...\n");
-        std::wstring devconInstall = L"\"\"" + devconExe + L"\" install \"C:\\VirtualDisplayDriver\\MttVDD.inf\" Root\\MttVDD >nul 2>&1\"";
-        _wsystem(devconInstall.c_str());
+        std::wstring devconStatus = L"\"\"" + devconExe + L"\" status Root\\MttVDD >nul 2>&1\"";
+        int statusRes = _wsystem(devconStatus.c_str());
+        if (statusRes == 0) {
+            printf("      Reiniciando dispositivo de Monitor Virtual existente para aplicar 1080p 60Hz...\n");
+            std::wstring devconRestart = L"\"\"" + devconExe + L"\" restart Root\\MttVDD >nul 2>&1\"";
+            _wsystem(devconRestart.c_str());
+        } else {
+            printf("      Instanciando dispositivo de Monitor Virtual (Root\\MttVDD)...\n");
+            std::wstring devconInstall = L"\"\"" + devconExe + L"\" install \"C:\\VirtualDisplayDriver\\MttVDD.inf\" Root\\MttVDD >nul 2>&1\"";
+            _wsystem(devconInstall.c_str());
+        }
     }
 
-    printf("  [OK] Driver de Monitor Virtual 16:10 (2560x1600 @ 90Hz) instalado com sucesso!\n");
+    // Garante que o Windows esteja em modo Estendido
+    _wsystem(L"displayswitch.exe /extend >nul 2>&1");
+
+    printf("  [OK] Driver de Monitor Virtual (1080p @ 60Hz) configurado com sucesso!\n");
     return true;
 }
 

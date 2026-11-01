@@ -77,25 +77,28 @@ int main() {
         printf("  Certifique-se de que o tablet esta conectado via cabo USB com Depuracao USB ativa.\n\n");
     }
 
-    // Checa se ha monitor 16:10 / 2560x1600 conectado
-    bool has1610 = false;
+    // Garante que o Windows esteja em modo de Area de Trabalho Estendida (/extend)
+    system("displayswitch.exe /extend >nul 2>&1");
+
+    // Checa se ha monitor secundario estendido ativo
+    bool hasExtendedDisplay = false;
     DISPLAY_DEVICEA dd = {};
     dd.cb = sizeof(dd);
     for (DWORD devNum = 0; EnumDisplayDevicesA(NULL, devNum, &dd, 0); devNum++) {
-        DEVMODEA dm = {};
-        dm.dmSize = sizeof(dm);
-        if (EnumDisplaySettingsA(dd.DeviceName, ENUM_CURRENT_SETTINGS, &dm)) {
-            if (dm.dmPelsWidth == 2560 && dm.dmPelsHeight == 1600) {
-                has1610 = true;
-                break;
+        if (!(dd.StateFlags & DISPLAY_DEVICE_PRIMARY_DEVICE) && (dd.StateFlags & DISPLAY_DEVICE_ATTACHED_TO_DESKTOP)) {
+            DEVMODEA dm = {};
+            dm.dmSize = sizeof(dm);
+            if (EnumDisplaySettingsA(dd.DeviceName, ENUM_CURRENT_SETTINGS, &dm)) {
+                hasExtendedDisplay = true;
+                printf("  [DISPLAY] Monitor Estendido ativo em %s (%lux%lu @ %luHz)!\n",
+                       dd.DeviceName, (unsigned long)dm.dmPelsWidth, (unsigned long)dm.dmPelsHeight, (unsigned long)dm.dmDisplayFrequency);
             }
         }
     }
-    if (has1610) {
-        printf("  [DISPLAY] Monitor 2560x1600 @ 90Hz (VDD 16:10 Nativo) DETECTADO!\n\n");
+    if (!hasExtendedDisplay) {
+        printf("  [DISPLAY] Monitor estendido nao encontrado. Ativando modo espelhado padrao.\n\n");
     } else {
-        printf("  [DISPLAY] Modo espelhamento / display padrao ativo.\n");
-        printf("  (Dica: Para resolucao 16:10 nativa sem faixas pretas, o driver VDD cria a tela estendida).\n\n");
+        printf("\n");
     }
 
     // 2. Inicia o app no tablet via ADB Intent

@@ -76,7 +76,7 @@ bool DxgiCapture::SetupDuplication() {
     IDXGIOutput* selectedOutput = NULL;
     int selectedAdapterIndex = 0;
     int selectedOutputIndex = 0;
-    bool foundTarget1610 = false;
+    int bestScore = -1;
 
     for (UINT a = 0; ; ++a) {
         IDXGIAdapter1* curAdapter = NULL;
@@ -97,28 +97,36 @@ bool DxgiCapture::SetupDuplication() {
             curOutput->GetDesc(&oDesc);
             int w = oDesc.DesktopCoordinates.right - oDesc.DesktopCoordinates.left;
             int h = oDesc.DesktopCoordinates.bottom - oDesc.DesktopCoordinates.top;
+            int left = oDesc.DesktopCoordinates.left;
+            int top = oDesc.DesktopCoordinates.top;
 
-            if (w == 2560 && h == 1600) {
+            int score = 10; // Base score para monitor primario
+            bool isSecondary = (left != 0 || top != 0 || o > 0 || a > 0);
+            if (isSecondary) {
+                score += 100; // Prioriza monitor secundario estendido
+            }
+            if (w == 1920 && h == 1080) {
+                score += 50; // Alvo preferencial 1080p
+            } else if (w == 2560 && h == 1600) {
+                score += 40; // Alvo nativo 16:10
+            } else if (w > 800) {
+                score += 15;
+            }
+
+            if (score > bestScore) {
                 if (selectedOutput) selectedOutput->Release();
                 if (selectedAdapter) selectedAdapter->Release();
-                selectedOutput = curOutput;
-                selectedAdapter = curAdapter;
-                selectedAdapterIndex = a;
-                selectedOutputIndex = o;
-                foundTarget1610 = true;
-                break;
-            } else if (!foundTarget1610 && selectedOutput == NULL) {
                 selectedOutput = curOutput;
                 selectedAdapter = curAdapter;
                 curAdapter->AddRef();
                 selectedAdapterIndex = a;
                 selectedOutputIndex = o;
+                bestScore = score;
             } else {
                 curOutput->Release();
             }
         }
 
-        if (foundTarget1610) break;
         curAdapter->Release();
     }
     factory->Release();
@@ -153,13 +161,13 @@ bool DxgiCapture::SetupDuplication() {
     m_height = outputDesc.DesktopCoordinates.bottom - outputDesc.DesktopCoordinates.top;
     m_desktopX = outputDesc.DesktopCoordinates.left;
     m_desktopY = outputDesc.DesktopCoordinates.top;
-    m_isUsingVirtualDisplay = foundTarget1610;
+    m_isUsingVirtualDisplay = (m_desktopX != 0 || m_desktopY != 0 || selectedOutputIndex > 0 || selectedAdapterIndex > 0);
 
-    if (foundTarget1610) {
-        printf("[DxgiCapture] Monitor Virtual 16:10 detectado (Adapter %d, Output %d: 2560x1600 @ 90Hz)!\n",
-               selectedAdapterIndex, selectedOutputIndex);
+    if (m_isUsingVirtualDisplay) {
+        printf("[DxgiCapture] Monitor Estendido selecionado: (Adapter %d, Output %d: %dx%d em %d,%d)!\n",
+               selectedAdapterIndex, selectedOutputIndex, m_width, m_height, m_desktopX, m_desktopY);
     } else {
-        printf("[DxgiCapture] Utilizando saida de video (Adapter %d, Output %d: %dx%d).\n",
+        printf("[DxgiCapture] Utilizando monitor primario espelhado (Adapter %d, Output %d: %dx%d).\n",
                selectedAdapterIndex, selectedOutputIndex, m_width, m_height);
     }
 
@@ -244,7 +252,8 @@ void DxgiCapture::Shutdown() {
     m_initialized = false;
 }
 
-bool DxgiCapture::AcquireNextFrame(ID3D11Texture2D** ppTexture, DWORD timeoutMs) {
+bool DxgiCapture::AcquireNextFrame(ID3D11Texture2D** ppTexture, DWORD timeoutMs, bool* pIsNewFrame) {
+    if (pIsNewFrame) *pIsNewFrame = false;
     if (!m_initialized || !m_duplication) return false;
 
     if (m_hasAcquiredFrame) {
@@ -258,7 +267,7 @@ bool DxgiCapture::AcquireNextFrame(ID3D11Texture2D** ppTexture, DWORD timeoutMs)
 
     if (hr == DXGI_ERROR_WAIT_TIMEOUT) {
         // Nenhuma alteracao de pixels na tela dentro da janela de amostragem.
-        // Sustenta a cadencia continua com a textura do ultimo frame capturado
+        // Sustenta a cadencia com a textura do ultimo frame capturado se disponivel.
         if (m_lastFrameTexture) {
             *ppTexture = m_lastFrameTexture;
             return true;
@@ -283,6 +292,9 @@ bool DxgiCapture::AcquireNextFrame(ID3D11Texture2D** ppTexture, DWORD timeoutMs)
         m_duplication->ReleaseFrame();
         return false;
     }
+
+    // Houve atualizacao real de pixels na GPU
+    if (pIsNewFrame) *pIsNewFrame = true;
 
     // Atualiza a textura de retencao com o novo frame em VRAM
     if (m_lastFrameTexture && *ppTexture) {

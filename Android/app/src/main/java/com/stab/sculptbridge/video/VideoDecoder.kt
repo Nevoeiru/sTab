@@ -40,8 +40,8 @@ class VideoDecoder(
                 // Prioridade máxima em tempo real (0 = Realtime, 1 = Best-effort)
                 setInteger(MediaFormat.KEY_PRIORITY, 0)
                 try {
-                    // Trava taxa de operação do decodificador na taxa nativa de 90Hz do Tab S9 FE+
-                    setFloat(MediaFormat.KEY_OPERATING_RATE, 90.0f)
+                    // Configura taxa de operacao do decodificador para 60 FPS de baixa latencia
+                    setFloat(MediaFormat.KEY_OPERATING_RATE, 60.0f)
                 } catch (_: Exception) {}
             }
 
@@ -49,7 +49,7 @@ class VideoDecoder(
             codec?.start()
             isConfigured = true
             consecutiveErrors = 0
-            Log.i(TAG, "MediaCodec H.264 Low-Latency iniciado com sucesso ($width x $height @ 90Hz).")
+            Log.i(TAG, "MediaCodec H.264 Low-Latency iniciado com sucesso ($width x $height @ 60 FPS).")
         } catch (e: Exception) {
             Log.e(TAG, "Falha ao inicializar o MediaCodec H.264: ${e.message}", e)
             codec = null

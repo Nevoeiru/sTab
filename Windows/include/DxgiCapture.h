@@ -31,10 +31,11 @@ public:
     /**
      * @brief Captura o próximo frame disponível da GPU.
      * @param ppTexture Ponteiro para receber a textura D3D11 capturada.
-     * @param timeoutMs Tempo limite de espera por novo frame (padrão 12ms para ~90fps).
-     * @return true se um novo frame foi adquirido com sucesso.
+     * @param timeoutMs Tempo limite de espera por novo frame (padrão 16ms para ~60fps).
+     * @param pIsNewFrame [Saída opcional] true se houve atualização real de pixels no desktop.
+     * @return true se um frame (novo ou de retenção) foi adquirido com sucesso.
      */
-    bool AcquireNextFrame(ID3D11Texture2D** ppTexture, DWORD timeoutMs = 12);
+    bool AcquireNextFrame(ID3D11Texture2D** ppTexture, DWORD timeoutMs = 16, bool* pIsNewFrame = NULL);
 
     /**
      * @brief Libera o frame adquirido anteriormente junto à Desktop Duplication API.

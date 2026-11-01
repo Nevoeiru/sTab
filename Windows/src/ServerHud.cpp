@@ -444,9 +444,9 @@ void ServerHud::Render(HDC hdc) {
     swprintf_s(barrelBuf, L"Botão S-Pen: %ls", s.barrelButton ? L"ATIVO (RMB)" : L"Normal");
     TextOutW(memDC, c1X + 16, cardY + 220, barrelBuf, (int)wcslen(barrelBuf));
 
-    // --- CARTÃO 2: Vídeo 90Hz & Display ---
+    // --- CARTÃO 2: Vídeo 60Hz & Display ---
     int c2X = c1X + cardW + 16;
-    DrawCardBase(c2X, cardY, cardW, cardH, L"Vídeo DXGI 90Hz");
+    DrawCardBase(c2X, cardY, cardW, cardH, L"Vídeo DXGI 60Hz (VFR)");
     DrawLineartDisplay(memDC, c2X + 14, cardY + 12);
 
     SelectObject(memDC, m_fontRegular);
@@ -456,7 +456,7 @@ void ServerHud::Render(HDC hdc) {
     SelectObject(memDC, m_fontBold);
     if (s.is1610Native) {
         SetTextColor(memDC, RGB(0, 230, 118));
-        TextOutW(memDC, c2X + 16, cardY + 70, L"16:10 Nativo (2560x1600)", 24);
+        TextOutW(memDC, c2X + 16, cardY + 70, L"Estendido (1920x1080)", 21);
     } else {
         SetTextColor(memDC, RGB(0, 229, 255));
         wchar_t resBuf[64];
@@ -470,13 +470,13 @@ void ServerHud::Render(HDC hdc) {
 
     SelectObject(memDC, m_fontBold);
     wchar_t fpsBuf[64];
-    swprintf_s(fpsBuf, L"Taxa: ~%.0f FPS", s.currentFps > 0 ? s.currentFps : 90.0f);
+    swprintf_s(fpsBuf, L"Taxa: ~%.0f FPS (Adaptativo)", s.currentFps);
     SetTextColor(memDC, RGB(236, 239, 244));
     TextOutW(memDC, c2X + 16, cardY + 122, fpsBuf, (int)wcslen(fpsBuf));
 
     SelectObject(memDC, m_fontMono);
     wchar_t brBuf[64];
-    swprintf_s(brBuf, L"Banda: ~%.1f Mbps", s.bitrateMbps > 0 ? s.bitrateMbps : 35.0f);
+    swprintf_s(brBuf, L"Banda: ~%.1f Mbps", s.bitrateMbps);
     TextOutW(memDC, c2X + 16, cardY + 146, brBuf, (int)wcslen(brBuf));
 
     SelectObject(memDC, m_fontRegular);
@@ -486,7 +486,7 @@ void ServerHud::Render(HDC hdc) {
     SelectObject(memDC, m_fontMono);
     SetTextColor(memDC, RGB(0, 230, 118));
     TextOutW(memDC, c2X + 16, cardY + 195, L"\u25CF 27183 [Input S-Pen]", 21);
-    TextOutW(memDC, c2X + 16, cardY + 215, L"\u25CF 27184 [Vídeo 90 FPS]", 22);
+    TextOutW(memDC, c2X + 16, cardY + 215, L"\u25CF 27184 [Vídeo 60 FPS VFR]", 26);
     TextOutW(memDC, c2X + 16, cardY + 235, L"\u25CF 27185 [Companion]", 19);
 
     // --- CARTÃO 3: Blender Companion ---

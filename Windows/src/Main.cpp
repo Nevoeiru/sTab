@@ -105,9 +105,9 @@ int RunSelfTest() {
     // 7. Teste do codificador H.264 por hardware (Media Foundation)
     printf("[7/8] Testando codificador Media Foundation H.264 Low-Latency... ");
     H264Encoder encoder;
-    if (encoder.Initialize(1920, 1080, 90)) {
+    if (encoder.Initialize(1920, 1080, 60)) {
         encoder.ForceKeyFrame();
-        printf("OK (90 FPS Low-Latency inicializado)\n");
+        printf("OK (60 FPS Low-Latency inicializado)\n");
         encoder.Shutdown();
     } else {
         printf("AVISO (Hardware H.264 MFT depende de suporte do driver grafico)\n");
@@ -246,7 +246,7 @@ int main(int argc, char* argv[]) {
            deskX, deskY, vidWidth, vidHeight);
 
     H264Encoder encoder;
-    bool hasEncoder = encoder.Initialize(vidWidth, vidHeight, 90, 35000000);
+    bool hasEncoder = encoder.Initialize(vidWidth, vidHeight, 60, 20000000);
     if (!hasEncoder) {
         printf("[Main] Aviso: Falha ao inicializar o codificador H.264 por hardware Media Foundation.\n");
     }
@@ -304,7 +304,7 @@ int main(int argc, char* argv[]) {
 
     printf("\n[sTab] Servidor pronto e em execucao. Pressione Ctrl+C para encerrar.\n\n");
 
-    // Thread de captura de vídeo contínua a 90 FPS
+    // Thread de captura de vídeo com taxa variável adaptativa (VFR até 60 FPS)
     HANDLE hCaptureThread = CreateThread(NULL, 0, [](LPVOID param) -> DWORD {
         auto* cap = (DxgiCapture*)((void**)param)[0];
         auto* enc = (H264Encoder*)((void**)param)[1];
@@ -317,12 +317,24 @@ int main(int argc, char* argv[]) {
             CloseDesktop(hDesk);
         }
 
+        ULONGLONG lastEncodeTick = 0;
+
         while (g_running) {
             if (vServ->IsClientConnected() && cap->IsInitialized() && enc->IsInitialized()) {
                 ID3D11Texture2D* pTex = NULL;
-                if (cap->AcquireNextFrame(&pTex, 11)) { // ~11ms para sincronizar com 90 FPS
-                    enc->EncodeFrame(cap->GetDevice(), cap->GetContext(), pTex);
+                bool isNewFrame = false;
+                // Amostragem na cadencia de 60 FPS (~16ms)
+                if (cap->AcquireNextFrame(&pTex, 16, &isNewFrame)) {
+                    ULONGLONG now = GetTickCount64();
+                    bool forceHeartbeat = (now - lastEncodeTick >= 500); // Keep-alive a cada 500ms se estático
+
+                    if (isNewFrame || forceHeartbeat) {
+                        enc->EncodeFrame(cap->GetDevice(), cap->GetContext(), pTex);
+                        lastEncodeTick = now;
+                    }
                     cap->ReleaseFrame();
+                } else {
+                    Sleep(1);
                 }
             } else {
                 Sleep(20);
