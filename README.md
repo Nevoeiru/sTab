@@ -16,7 +16,18 @@ O **sTab** é uma solução completa de ultra-baixa latência que conecta o hard
 
 ---
 
-## 2. Preparação do Tablet (Executada Apenas uma Vez)
+## 2. Instalação em 1 Clique (Zero Configuração Manual)
+
+Para instalar e configurar todo o ambiente automaticamente:
+1. **No PC:** Dê dois cliques em **`sTab_Setup.exe`** na pasta principal.
+   - Instala e ativa o Add-on no Blender automaticamente em todas as versões instaladas.
+   - Instala o `sTab.apk` no tablet via cabo USB se ele já estiver plugado.
+   - Cria o atalho oficial **`sTab (Iniciar Mesa Digitalizadora)`** diretamente na sua Área de Trabalho.
+2. **No Tablet:** Instale o arquivo **`sTab.apk`** (localizado na pasta principal) ou deixe o instalador/launcher instalá-lo automaticamente via cabo USB.
+
+---
+
+## 3. Preparação do Tablet (Executada Apenas uma Vez)
 
 1. **Ativar Opções do Desenvolvedor no Tablet:**
    * No Galaxy Tab S9 FE+, vá em **Configurações > Sobre o tablet > Informações do software**.

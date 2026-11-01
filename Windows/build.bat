@@ -32,6 +32,11 @@ g++ -std=c++17 -O3 -Wall -Wextra -I"%SCRIPT_DIR%include" ^
     -o "%SCRIPT_DIR%bin\sTab_launcher.exe" ^
     -static -s
 
+g++ -std=c++17 -O3 -Wall -Wextra ^
+    "%SCRIPT_DIR%src\sTab_setup.cpp" ^
+    -o "%SCRIPT_DIR%..\sTab_Setup.exe" ^
+    -lole32 -luuid -lshell32 -lshlwapi -static -s
+
 if %ERRORLEVEL% equ 0 (
     echo.
     echo [SUCESSO] Compilacao concluida com exito!
