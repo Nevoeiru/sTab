@@ -166,12 +166,14 @@ class StylusMotionProcessor(
 
     /**
      * Converte os eixos polares do Android (AXIS_TILT em radianos e AXIS_ORIENTATION)
-     * para coordenadas cartesianas de inclinação X e Y (-90° a +90°).
+     * para coordenadas cartesianas de inclinação X e Y (-90° a +90°) conforme padrão Windows Ink:
+     * tiltX = asin(sin(tilt) * sin(orientation)) * (180 / PI)
+     * tiltY = asin(-sin(tilt) * cos(orientation)) * (180 / PI)
      */
     private fun convertPolarTiltToCartesian(tiltRad: Float, orientRad: Float): Pair<Short, Short> {
         val sinTilt = sin(tiltRad.toDouble())
-        val tiltXDeg = Math.toDegrees(asin(-sinTilt * sin(orientRad.toDouble()))).toInt().coerceIn(-90, 90)
-        val tiltYDeg = Math.toDegrees(asin(sinTilt * cos(orientRad.toDouble()))).toInt().coerceIn(-90, 90)
+        val tiltXDeg = Math.toDegrees(asin(sinTilt * sin(orientRad.toDouble()))).toInt().coerceIn(-90, 90)
+        val tiltYDeg = Math.toDegrees(asin(-sinTilt * cos(orientRad.toDouble()))).toInt().coerceIn(-90, 90)
         return Pair(tiltXDeg.toShort(), tiltYDeg.toShort())
     }
 }

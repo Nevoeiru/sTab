@@ -36,18 +36,49 @@ class OneUiShield(private val window: Window) {
     }
 
     /**
-     * Aplica exclusão de gestos de borda (API 29+) para evitar que arrastos
-     * perto das laterais acionem o comando de "Voltar" do Android.
+     * Aplica exclusão de gestos de borda (API 29+) respeitando o teto regulatório
+     * estrito de 200 dp imposto pelo Android por margem lateral.
+     * Aloca a quota exclusivamente sobre as áreas críticas de deslizamento contínuo (Sliders).
      */
-    fun applyGestureExclusion(view: View) {
+    fun applyTargetedGestureExclusion(containerView: View, targetViews: List<View>) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            view.addOnLayoutChangeListener { v, left, top, right, bottom, _, _, _, _ ->
-                val width = right - left
-                val height = bottom - top
-                if (width > 0 && height > 0) {
-                    // Protege toda a área do canvas e das bordas laterais
-                    val rects = listOf(Rect(0, 0, width, height))
-                    v.systemGestureExclusionRects = rects
+            containerView.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+                val density = containerView.resources.displayMetrics.density
+                val maxExclusionHeightPx = (200 * density).toInt()
+
+                val rects = mutableListOf<Rect>()
+                val containerLoc = IntArray(2)
+                containerView.getLocationOnScreen(containerLoc)
+
+                for (target in targetViews) {
+                    if (target.visibility == View.VISIBLE) {
+                        val targetLoc = IntArray(2)
+                        target.getLocationOnScreen(targetLoc)
+
+                        val relLeft = targetLoc[0] - containerLoc[0]
+                        val relTop = targetLoc[1] - containerLoc[1]
+                        val targetW = target.width
+                        val targetH = target.height
+
+                        if (targetW > 0 && targetH > 0) {
+                            // Garante que a altura não ultrapasse a cota máxima de 200 dp do Android
+                            val exclusionH = minOf(targetH, maxExclusionHeightPx)
+                            val topOffset = (targetH - exclusionH) / 2
+
+                            rects.add(
+                                Rect(
+                                    relLeft,
+                                    relTop + topOffset,
+                                    relLeft + targetW,
+                                    relTop + topOffset + exclusionH
+                                )
+                            )
+                        }
+                    }
+                }
+
+                if (rects.isNotEmpty()) {
+                    containerView.systemGestureExclusionRects = rects
                 }
             }
         }

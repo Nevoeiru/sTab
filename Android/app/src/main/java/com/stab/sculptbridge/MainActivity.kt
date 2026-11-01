@@ -124,9 +124,9 @@ class MainActivity : Activity() {
         assembleLayout()
         setContentView(rootContainer)
 
-        // Aplica modo imersivo e exclusão de bordas
+        // Aplica modo imersivo e exclusão de gestos direcionada (quota de 200 dp da One UI)
         oneUiShield.setupImmersiveMode(rootContainer)
-        oneUiShield.applyGestureExclusion(rootContainer)
+        oneUiShield.applyTargetedGestureExclusion(rootContainer, sculptPad.getSliderViews())
 
         usbClient.onConnectionStateChanged = { connected ->
             runOnUiThread {
@@ -151,6 +151,7 @@ class MainActivity : Activity() {
 
     private fun swapHandOrientation() {
         isLeftHandMode = !isLeftHandMode
+        sculptPad.updateEdgeMargin(isLeftEdge = !isLeftHandMode)
         assembleLayout()
         val side = if (isLeftHandMode) "Canhoto (Direita)" else "Destro (Esquerda)"
         Toast.makeText(this, "SculptPad alternado para modo $side", Toast.LENGTH_SHORT).show()

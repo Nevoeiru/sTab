@@ -18,15 +18,45 @@ class SculptPadLayout(
     private val onHandSwapped: () -> Unit
 ) : LinearLayout(context) {
 
+    lateinit var radiusSlider: TouchSliderView
+        private set
+    lateinit var strengthSlider: TouchSliderView
+        private set
+
     init {
         orientation = VERTICAL
         setBackgroundColor(Color.parseColor("#151518"))
-        setPadding(12, 12, 12, 12)
+        updateEdgeMargin(isLeftEdge = true)
 
         setupTopToolbar()
         setupSliders()
         setupHoldModifiers()
         setupFooterUndoRedo()
+    }
+
+    /**
+     * Atualiza a margem física de 14-16 dp na borda externa do SculptPad,
+     * afastando os botões da zona capacitiva de disparo de gestos do Android.
+     */
+    fun updateEdgeMargin(isLeftEdge: Boolean) {
+        val density = resources.displayMetrics.density
+        val outerMarginPx = (16 * density).toInt() // Margem de segurança de 16 dp
+        val innerMarginPx = (8 * density).toInt()
+        val topBottomPx = (8 * density).toInt()
+
+        if (isLeftEdge) {
+            setPadding(outerMarginPx, topBottomPx, innerMarginPx, topBottomPx)
+        } else {
+            setPadding(innerMarginPx, topBottomPx, outerMarginPx, topBottomPx)
+        }
+    }
+
+    fun getSliderViews(): List<android.view.View> {
+        return if (::radiusSlider.isInitialized && ::strengthSlider.isInitialized) {
+            listOf(radiusSlider, strengthSlider)
+        } else {
+            emptyList()
+        }
     }
 
     private fun setupTopToolbar() {
@@ -82,7 +112,7 @@ class SculptPadLayout(
             }
         }
 
-        val radiusSlider = TouchSliderView(
+        radiusSlider = TouchSliderView(
             context,
             label = "RAIO",
             triggerAction = Protocol.SCULPTPAD_TRIGGER_RADIUS,
@@ -98,7 +128,7 @@ class SculptPadLayout(
             onActionEmitted = this@SculptPadLayout.onActionEmitted
         }
 
-        val strengthSlider = TouchSliderView(
+        strengthSlider = TouchSliderView(
             context,
             label = "FORÇA",
             triggerAction = Protocol.SCULPTPAD_TRIGGER_STRENGTH,
