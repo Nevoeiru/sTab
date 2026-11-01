@@ -276,9 +276,12 @@ class STAB_PT_MainPanel(bpy.types.Panel):
         # Status da Tablet API (Windows Ink)
         tablet_api = getattr(context.preferences.inputs, "tablet_api", "DESCONHECIDO")
         if tablet_api == 'WINDOWS_INK':
-            box_opt.label(text="API Mesa: Windows Ink (Ativo)", icon='CHECKMARK')
+            box_opt.label(text="API Mesa: Windows Ink (OK)", icon='CHECKMARK')
         else:
-            box_opt.label(text=f"API Mesa: {tablet_api} (Requer Ajuste)", icon='ERROR')
+            box_opt.label(text=f"API Mesa: {tablet_api} -> Requer Windows Ink", icon='ERROR')
+            row_warn = box_opt.row()
+            row_warn.alert = True
+            row_warn.label(text="Clique abaixo para ativar Windows Ink:", icon='INFO')
 
         row = box_opt.row()
         row.scale_y = 1.4
@@ -346,14 +349,20 @@ classes = (
 
 def register():
     for cls in classes:
-        bpy.utils.register_class(cls)
+        try:
+            bpy.utils.register_class(cls)
+        except Exception:
+            pass
     # Inicia a telemetria automaticamente se desejado
     STabTelemetryServer.get_instance().start()
 
 def unregister():
     STabTelemetryServer.get_instance().stop()
     for cls in reversed(classes):
-        bpy.utils.unregister_class(cls)
+        try:
+            bpy.utils.unregister_class(cls)
+        except Exception:
+            pass
 
 if __name__ == "__main__":
     register()
