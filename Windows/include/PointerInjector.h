@@ -23,6 +23,30 @@
 #define FEEDBACK_PEN_PRESSANDHOLD 3
 #endif
 
+#ifndef POINTER_FLAG_FIRSTBUTTON
+#define POINTER_FLAG_FIRSTBUTTON 0x00000010
+#endif
+
+#ifndef POINTER_FLAG_SECONDBUTTON
+#define POINTER_FLAG_SECONDBUTTON 0x00000020
+#endif
+
+#ifndef POINTER_FLAG_CONFIDENCE
+#define POINTER_FLAG_CONFIDENCE 0x00000400
+#endif
+
+#ifndef POINTER_FLAG_PRIMARY
+#define POINTER_FLAG_PRIMARY 0x00002000
+#endif
+
+#ifndef POINTER_CHANGE_FIRSTBUTTON_DOWN
+#define POINTER_CHANGE_FIRSTBUTTON_DOWN 1
+#endif
+
+#ifndef POINTER_CHANGE_FIRSTBUTTON_UP
+#define POINTER_CHANGE_FIRSTBUTTON_UP 2
+#endif
+
 /**
  * @brief Assinaturas nativas da Synthetic Pointer API e Feedback API (user32.dll).
  * Carregadas dinamicamente em tempo de execução para máxima compatibilidade.

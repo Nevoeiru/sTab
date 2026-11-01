@@ -39,9 +39,12 @@ class STAB_OT_OptimizeBlender(bpy.types.Operator):
 
         # 1. Trava a Tablet API no padrao Windows Ink nativo
         try:
-            prefs.inputs.tablet_api = 'WININK'
+            prefs.inputs.tablet_api = 'WINDOWS_INK'
         except Exception:
-            pass
+            try:
+                prefs.inputs.tablet_api = 'WININK'
+            except Exception:
+                pass
 
         # 2. Configura navegacao de viewport 3D ideal para gestos touch
         prefs.inputs.view_rotate_method = 'TURNTABLE'
@@ -53,9 +56,26 @@ class STAB_OT_OptimizeBlender(bpy.types.Operator):
         # 3. Garante que atalhos essenciais estejam ativos
         prefs.inputs.use_emulate_numpad = False
 
+        # 4. Ativa a sensibilidade de pressao para forca e raio nos pinceis
+        try:
+            if context.tool_settings.sculpt and context.tool_settings.sculpt.brush:
+                context.tool_settings.sculpt.brush.use_pressure_strength = True
+                context.tool_settings.sculpt.brush.use_pressure_size = True
+            for b in bpy.data.brushes:
+                b.use_pressure_strength = True
+                b.use_pressure_size = True
+        except Exception:
+            pass
+
+        # 5. Salva as preferencias do usuario no disco
+        try:
+            bpy.ops.wm.save_userpref()
+        except Exception:
+            pass
+
         self.report(
             {'INFO'},
-            "sTab: Blender otimizado com sucesso! (Windows Ink ativo, 90Hz e gestos calibrados)"
+            "sTab: Blender otimizado com sucesso! (Windows Ink ativo, pressao da S-Pen e gestos calibrados)"
         )
         return {'FINISHED'}
 
@@ -252,6 +272,14 @@ class STAB_PT_MainPanel(bpy.types.Panel):
         # Box 1: Status e Otimizacao
         box_opt = layout.box()
         box_opt.label(text="Configuracao do Dispositivo", icon='TABLET')
+
+        # Status da Tablet API (Windows Ink)
+        tablet_api = getattr(context.preferences.inputs, "tablet_api", "DESCONHECIDO")
+        if tablet_api == 'WINDOWS_INK':
+            box_opt.label(text="API Mesa: Windows Ink (Ativo)", icon='CHECKMARK')
+        else:
+            box_opt.label(text=f"API Mesa: {tablet_api} (Requer Ajuste)", icon='ERROR')
+
         row = box_opt.row()
         row.scale_y = 1.4
         row.operator("stab.optimize_blender", text="Otimizar Blender para sTab", icon='CHECKMARK')
@@ -272,6 +300,11 @@ class STAB_PT_MainPanel(bpy.types.Panel):
             col.label(text=f"Ferramenta: {brush.name}")
             col.prop(brush, "size", text="Raio (F)")
             col.prop(brush, "strength", text="Forca (Shift+F)")
+
+            # Toggles de Sensibilidade de Pressão da S-Pen
+            row_pres = box_sculpt.row(align=True)
+            row_pres.prop(brush, "use_pressure_strength", text="Pressao Forca", toggle=True, icon='STYLUS_PRESSURE')
+            row_pres.prop(brush, "use_pressure_size", text="Pressao Raio", toggle=True, icon='STYLUS_PRESSURE')
             
             # Simetria
             row_sym = box_sculpt.row(align=True)

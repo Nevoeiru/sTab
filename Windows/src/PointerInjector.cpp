@@ -149,7 +149,8 @@ void PointerInjector::SetModalNavigationActive(bool active) {
             pti.type = PT_PEN;
             pti.penInfo.pointerInfo.pointerType = PT_PEN;
             pti.penInfo.pointerInfo.pointerId = 0;
-            pti.penInfo.pointerInfo.pointerFlags = POINTER_FLAG_UP;
+            pti.penInfo.pointerInfo.pointerFlags = POINTER_FLAG_UP | POINTER_FLAG_PRIMARY;
+            pti.penInfo.pointerInfo.ButtonChangeType = (POINTER_BUTTON_CHANGE_TYPE)POINTER_CHANGE_FIRSTBUTTON_UP;
             m_pfnInject(m_hDevice, &pti, 1);
         }
         m_wasTipDown = false;
@@ -217,25 +218,46 @@ bool PointerInjector::InjectPen(const InputPacket& packet) {
     pti.penInfo.pointerInfo.ptPixelLocation.x = screenX;
     pti.penInfo.pointerInfo.ptPixelLocation.y = screenY;
 
-    // Definição da máquina de estados do ponteiro no Windows Ink
+    // Definição da máquina de estados do ponteiro no Windows Ink (com suporte pleno a pressão e botões)
     if (isTipDown) {
         if (!m_wasTipDown) {
-            pti.penInfo.pointerInfo.pointerFlags = POINTER_FLAG_DOWN | POINTER_FLAG_INRANGE | POINTER_FLAG_INCONTACT;
+            pti.penInfo.pointerInfo.pointerFlags = POINTER_FLAG_DOWN | 
+                                                   POINTER_FLAG_INRANGE | 
+                                                   POINTER_FLAG_INCONTACT | 
+                                                   POINTER_FLAG_FIRSTBUTTON | 
+                                                   POINTER_FLAG_PRIMARY | 
+                                                   POINTER_FLAG_CONFIDENCE;
+            pti.penInfo.pointerInfo.ButtonChangeType = (POINTER_BUTTON_CHANGE_TYPE)POINTER_CHANGE_FIRSTBUTTON_DOWN;
         } else {
-            pti.penInfo.pointerInfo.pointerFlags = POINTER_FLAG_UPDATE | POINTER_FLAG_INRANGE | POINTER_FLAG_INCONTACT;
+            pti.penInfo.pointerInfo.pointerFlags = POINTER_FLAG_UPDATE | 
+                                                   POINTER_FLAG_INRANGE | 
+                                                   POINTER_FLAG_INCONTACT | 
+                                                   POINTER_FLAG_FIRSTBUTTON | 
+                                                   POINTER_FLAG_PRIMARY | 
+                                                   POINTER_FLAG_CONFIDENCE;
+            pti.penInfo.pointerInfo.ButtonChangeType = POINTER_CHANGE_NONE;
         }
     } else if (isHovering) {
         if (m_wasTipDown) {
-            pti.penInfo.pointerInfo.pointerFlags = POINTER_FLAG_UP | POINTER_FLAG_INRANGE;
+            pti.penInfo.pointerInfo.pointerFlags = POINTER_FLAG_UP | 
+                                                   POINTER_FLAG_INRANGE | 
+                                                   POINTER_FLAG_PRIMARY;
+            pti.penInfo.pointerInfo.ButtonChangeType = (POINTER_BUTTON_CHANGE_TYPE)POINTER_CHANGE_FIRSTBUTTON_UP;
         } else {
-            pti.penInfo.pointerInfo.pointerFlags = POINTER_FLAG_UPDATE | POINTER_FLAG_INRANGE;
+            pti.penInfo.pointerInfo.pointerFlags = POINTER_FLAG_UPDATE | 
+                                                   POINTER_FLAG_INRANGE | 
+                                                   POINTER_FLAG_PRIMARY;
+            pti.penInfo.pointerInfo.ButtonChangeType = POINTER_CHANGE_NONE;
         }
     } else {
         // Caneta se afastou completamente da tela
         if (m_wasTipDown) {
-            pti.penInfo.pointerInfo.pointerFlags = POINTER_FLAG_UP;
+            pti.penInfo.pointerInfo.pointerFlags = POINTER_FLAG_UP | 
+                                                   POINTER_FLAG_PRIMARY;
+            pti.penInfo.pointerInfo.ButtonChangeType = (POINTER_BUTTON_CHANGE_TYPE)POINTER_CHANGE_FIRSTBUTTON_UP;
         } else {
             pti.penInfo.pointerInfo.pointerFlags = POINTER_FLAG_UPDATE;
+            pti.penInfo.pointerInfo.ButtonChangeType = POINTER_CHANGE_NONE;
         }
     }
 
@@ -252,8 +274,12 @@ bool PointerInjector::InjectPen(const InputPacket& packet) {
     pti.penInfo.penMask = PEN_MASK_PRESSURE | PEN_MASK_TILT_X | PEN_MASK_TILT_Y;
 
     // Normalização da pressão da S-Pen: 0..4096 mapeado para 0..1024 na Windows Ink API
-    ULONG mappedPressure = (ULONG)((packet.pressure * 1024ULL) / 4096ULL);
-    if (mappedPressure > 1024) mappedPressure = 1024;
+    ULONG mappedPressure = 0;
+    if (isTipDown) {
+        mappedPressure = (ULONG)((packet.pressure * 1024ULL) / 4096ULL);
+        if (mappedPressure < 1) mappedPressure = 1;
+        if (mappedPressure > 1024) mappedPressure = 1024;
+    }
     pti.penInfo.pressure = mappedPressure;
 
     // Clamping de inclinação (-90 a +90 graus)
