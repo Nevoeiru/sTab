@@ -93,9 +93,17 @@ if exist "%APK_FILE%" (
     "%ADB_PATH%" shell am start -n com.stab.sculptbridge/.MainActivity >nul 2>&1
 )
 
-:: 6. Inicia o Servidor Windows
+:: 6. Informacoes sobre Display Virtual 16:10
+if exist "%ROOT_DIR%VirtualDisplay\options.txt" (
+    echo.
+    echo   [INFO] Perfil de Monitor Virtual 16:10 (2560x1600 @ 90Hz) disponivel em:
+    echo          %ROOT_DIR%VirtualDisplay\options.txt
+    echo          (Caso utilize o driver VDD, o sTab selecionara a tela 16:10 automaticamente).
+)
+
+:: 7. Inicia o Servidor Windows
 echo.
-echo [4/4] Iniciando Servidor Windows (Input Injector + DXGI H.264 Encoder)...
+echo [4/4] Iniciando Servidor Windows (Input Injector + DXGI H.264 Encoder v2.0)...
 echo ====================================================================
 echo   Pressione Ctrl+C nesta janela a qualquer momento para encerrar.
 echo ====================================================================

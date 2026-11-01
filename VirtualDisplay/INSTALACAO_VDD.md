@@ -44,3 +44,4 @@ O VDD é um driver de exibição indireta em modo de usuário (*IddCx - Indirect
 * Ao abrir o Blender, basta movê-lo para a tela do tablet pressionando o atalho do teclado:
   **`Windows + Shift + Seta para a Direita`** (ou Seta para a Esquerda).
 * O Blender ocupará a totalidade dos 12,4 polegadas do Galaxy Tab S9 FE+ a 90 FPS sem barras pretas!
+

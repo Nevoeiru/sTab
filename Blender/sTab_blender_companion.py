@@ -96,6 +96,24 @@ class STAB_OT_SetupClayShading(bpy.types.Operator):
 
 
 # ------------------------------------------------------------------------
+# 3. Operador: Alinhamento de Proporcao 16:10 (Galaxy Tab S9 FE+)
+# ------------------------------------------------------------------------
+class STAB_OT_AlignWindow1610(bpy.types.Operator):
+    """Configura o render e viewport para o formato 16:10 nativo (2560x1600) do Galaxy Tab"""
+    bl_idname = "stab.align_window_1610"
+    bl_label = "Alinhar Formato 16:10 (2560x1600)"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        scene = context.scene
+        scene.render.resolution_x = 2560
+        scene.render.resolution_y = 1600
+        scene.render.resolution_percentage = 100
+        self.report({'INFO'}, "sTab: Proporcao 16:10 nativa (2560x1600 @ 90Hz) configurada!")
+        return {'FINISHED'}
+
+
+# ------------------------------------------------------------------------
 # 3. Operador: Selecao Rapida de Pinceis de Escultura
 # ------------------------------------------------------------------------
 class STAB_OT_SelectBrush(bpy.types.Operator):
@@ -241,6 +259,9 @@ class STAB_PT_MainPanel(bpy.types.Panel):
         row_shd = box_opt.row()
         row_shd.operator("stab.setup_clay_shading", text="Visualizacao Argila 3D", icon='SHADING_SOLID')
 
+        row_1610 = box_opt.row()
+        row_1610.operator("stab.align_window_1610", text="Alinhar Formato 16:10", icon='WINDOW')
+
         # Box 2: Telemetria do Pincel Ativo
         box_sculpt = layout.box()
         box_sculpt.label(text="Pincel Ativo & Parametros", icon='BRUSH_SCULPT_DRAW')
@@ -284,6 +305,7 @@ class STAB_PT_MainPanel(bpy.types.Panel):
 classes = (
     STAB_OT_OptimizeBlender,
     STAB_OT_SetupClayShading,
+    STAB_OT_AlignWindow1610,
     STAB_OT_SelectBrush,
     STAB_OT_ToggleTelemetry,
     STAB_PT_MainPanel,
