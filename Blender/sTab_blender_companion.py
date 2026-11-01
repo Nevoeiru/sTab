@@ -16,7 +16,7 @@ bl_info = {
     "category": "3D View",
 }
 
-import bpy
+import bpy  # pyrefly: ignore[missing-import] # type: ignore
 import socket
 import json
 import threading
@@ -142,7 +142,7 @@ class STAB_OT_SelectBrush(bpy.types.Operator):
     bl_label = "Selecionar Pincel"
     bl_options = {'REGISTER', 'UNDO'}
 
-    brush_type: bpy.props.StringProperty(name="Brush Type", default="Clay Strips")
+    brush_type: bpy.props.StringProperty(name="Brush Type", default="Clay Strips")  # pyrefly: ignore[invalid-annotation] # type: ignore
 
     def execute(self, context):
         if context.mode != 'SCULPT':
