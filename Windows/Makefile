@@ -7,7 +7,7 @@ INCDIR = include
 OBJDIR = obj
 BINDIR = bin
 
-SOURCES = $(SRCDIR)/Main.cpp $(SRCDIR)/PointerInjector.cpp $(SRCDIR)/GestureTranslator.cpp $(SRCDIR)/TcpServer.cpp $(SRCDIR)/DxgiCapture.cpp $(SRCDIR)/H264Encoder.cpp $(SRCDIR)/VideoServer.cpp
+SOURCES = $(SRCDIR)/Main.cpp $(SRCDIR)/PointerInjector.cpp $(SRCDIR)/GestureTranslator.cpp $(SRCDIR)/TcpServer.cpp $(SRCDIR)/DxgiCapture.cpp $(SRCDIR)/H264Encoder.cpp $(SRCDIR)/VideoServer.cpp $(SRCDIR)/TelemetryBridge.cpp
 OBJECTS = $(patsubst $(SRCDIR)/%.cpp,$(OBJDIR)/%.o,$(SOURCES))
 TARGET = $(BINDIR)/sTab_server.exe
 LAUNCHER_TARGET = $(BINDIR)/sTab_launcher.exe

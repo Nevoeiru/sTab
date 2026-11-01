@@ -22,6 +22,8 @@ class SculptPadLayout(
         private set
     lateinit var strengthSlider: TouchSliderView
         private set
+    lateinit var telemetryCard: BrushTelemetryCard
+        private set
 
     init {
         orientation = VERTICAL
@@ -29,6 +31,7 @@ class SculptPadLayout(
         updateEdgeMargin(isLeftEdge = true)
 
         setupTopToolbar()
+        setupTelemetryCard()
         setupSliders()
         setupHoldModifiers()
         setupFooterUndoRedo()
@@ -102,6 +105,30 @@ class SculptPadLayout(
         topRow.addView(transferBtn)
         topRow.addView(switchHandBtn)
         addView(topRow)
+    }
+
+    private fun setupTelemetryCard() {
+        telemetryCard = BrushTelemetryCard(context).apply {
+            layoutParams = LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+                bottomMargin = 10
+            }
+        }
+        addView(telemetryCard)
+    }
+
+    /**
+     * Atualiza os dados de telemetria recebidos do Blender no cartão e nos sliders.
+     */
+    fun updateBrushTelemetry(data: com.stab.sculptbridge.TelemetryData) {
+        if (::telemetryCard.isInitialized) {
+            telemetryCard.updateTelemetry(data)
+        }
+        if (::radiusSlider.isInitialized) {
+            radiusSlider.updateValueQuietly(data.size.toFloat())
+        }
+        if (::strengthSlider.isInitialized) {
+            strengthSlider.updateValueQuietly(data.strength)
+        }
     }
 
     private fun setupSliders() {

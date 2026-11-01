@@ -73,6 +73,13 @@ if %ERRORLEVEL% equ 0 (
     echo   [ERRO] Falha ao abrir tunel reverso na porta 27184.
 )
 
+"%ADB_PATH%" reverse tcp:27185 tcp:27185
+if %ERRORLEVEL% equ 0 (
+    echo   - Porta 27185 (Telemetria Bidirecional Blender): ATIVA
+) else (
+    echo   [ERRO] Falha ao abrir tunel reverso na porta 27185.
+)
+
 :: 5. Verifica se o APK esta instalado ou precisa ser atualizado
 echo.
 echo [3/4] Verificando aplicativo sTab no tablet...

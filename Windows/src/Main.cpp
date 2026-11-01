@@ -11,6 +11,7 @@
 #include "DxgiCapture.h"
 #include "H264Encoder.h"
 #include "VideoServer.h"
+#include "TelemetryBridge.h"
 
 static volatile bool g_running = true;
 
@@ -111,7 +112,7 @@ int RunSelfTest() {
     }
 
     // 8. Teste do servidor de streaming de video (27184)
-    printf("[8/8] Testando socket TCP de streaming de video em 127.0.0.1:27184... ");
+    printf("[8/9] Testando socket TCP de streaming de video em 127.0.0.1:27184... ");
     VideoServer videoServer(27184);
     if (videoServer.Start()) {
         printf("OK (Socket de video escutando)\n");
@@ -119,6 +120,17 @@ int RunSelfTest() {
     } else {
         printf("FALHA ao abrir socket de video!\n");
         return 8;
+    }
+
+    // 9. Teste da ponte de telemetria bidirecional Blender (27185)
+    printf("[9/9] Testando ponte de telemetria Blender UDP/TCP em 127.0.0.1:27185... ");
+    TelemetryBridge telemetryBridge(27185);
+    if (telemetryBridge.Start()) {
+        printf("OK (Ponte de telemetria escutando)\n");
+        telemetryBridge.Stop();
+    } else {
+        printf("FALHA ao abrir ponte de telemetria!\n");
+        return 9;
     }
 
     capture.Shutdown();
@@ -217,6 +229,10 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    // 3. Inicializa a ponte de telemetria do Blender (porta 27185)
+    TelemetryBridge telemetryBridge(27185);
+    telemetryBridge.Start();
+
     printf("\n[sTab] Servidor pronto e em execucao. Pressione Ctrl+C para encerrar.\n\n");
 
     // Thread de captura de vídeo contínua a 90 FPS
@@ -266,6 +282,7 @@ int main(int argc, char* argv[]) {
     }
 
     videoServer.Stop();
+    telemetryBridge.Stop();
     encoder.Shutdown();
     capture.Shutdown();
 

@@ -31,13 +31,16 @@ int main() {
     printf("[1/3] Configurando tuneis USB reversos de ultra-baixa latencia...\n");
     std::string cmd1 = adbPath + " reverse tcp:27183 tcp:27183";
     std::string cmd2 = adbPath + " reverse tcp:27184 tcp:27184";
+    std::string cmd3 = adbPath + " reverse tcp:27185 tcp:27185";
 
     int res1 = system(cmd1.c_str());
     int res2 = system(cmd2.c_str());
+    int res3 = system(cmd3.c_str());
 
-    if (res1 == 0 && res2 == 0) {
+    if (res1 == 0 && res2 == 0 && res3 == 0) {
         printf("  [OK] Porta 27183 (Input S-Pen 240Hz, Touch e Modificadores) ATIVA.\n");
-        printf("  [OK] Porta 27184 (Video H.264 90Hz DXGI GPU) ATIVA.\n\n");
+        printf("  [OK] Porta 27184 (Video H.264 90Hz DXGI GPU) ATIVA.\n");
+        printf("  [OK] Porta 27185 (Telemetria Bidirecional Blender) ATIVA.\n\n");
     } else {
         printf("  [AVISO] Nao foi possivel configurar o tunel reverso automaticamente.\n");
         printf("  Certifique-se de que o tablet esta conectado via cabo USB com Depuracao USB ativa.\n\n");

@@ -23,6 +23,7 @@ g++ -std=c++17 -O3 -Wall -Wextra -I"%SCRIPT_DIR%include" ^
     "%SCRIPT_DIR%src\DxgiCapture.cpp" ^
     "%SCRIPT_DIR%src\H264Encoder.cpp" ^
     "%SCRIPT_DIR%src\VideoServer.cpp" ^
+    "%SCRIPT_DIR%src\TelemetryBridge.cpp" ^
     -o "%SCRIPT_DIR%bin\sTab_server.exe" ^
     -lws2_32 -luser32 -ld3d11 -ldxgi -lmfplat -lmfuuid -lole32 -loleaut32 -static -s
 

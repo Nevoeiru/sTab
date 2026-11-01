@@ -14,16 +14,20 @@ if not exist "%ADB_PATH%" (
     exit /b 1
 )
 
-echo [1/3] Verificando conexao com o Galaxy Tab S9 FE+...
+echo [1/4] Verificando conexao com o Galaxy Tab S9 FE+...
 "%ADB_PATH%" devices
 
 echo.
-echo [2/3] Configurando tunel reverso da porta de telemetria S-Pen (27183)...
+echo [2/4] Configurando tunel reverso da porta de telemetria S-Pen (27183)...
 "%ADB_PATH%" reverse tcp:27183 tcp:27183
 
 echo.
-echo [3/3] Configurando tunel reverso da porta de video H.264 (27184)...
+echo [3/4] Configurando tunel reverso da porta de video H.264 (27184)...
 "%ADB_PATH%" reverse tcp:27184 tcp:27184
+
+echo.
+echo [4/4] Configurando tunel reverso de telemetria bidirecional Blender (27185)...
+"%ADB_PATH%" reverse tcp:27185 tcp:27185
 
 echo.
 echo ========================================================

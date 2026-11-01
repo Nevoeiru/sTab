@@ -51,6 +51,7 @@ O inicializador executará os seguintes passos automaticamente:
 2. Abre os túneis USB reversos de ultra-baixa latência:
    - **Porta 27183:** Canal de telemetria da S-Pen 240Hz, gestos touch e comandos do SculptPad.
    - **Porta 27184:** Canal de transmissão de vídeo H.264 a 90 FPS.
+   - **Porta 27185:** Canal de telemetria bidirecional do Blender (nome do pincel, tamanho, força e simetria).
 3. Detecta se o monitor virtual 2560x1600 está ativo no sistema.
 4. Inicia o aplicativo `sTab` no tablet via ADB Intent.
 5. Inicializa o servidor `sTab_server.exe` no Windows.

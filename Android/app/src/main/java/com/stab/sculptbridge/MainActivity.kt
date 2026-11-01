@@ -30,6 +30,7 @@ class MainActivity : Activity() {
     private lateinit var canvasView: SculptCanvasView
     private lateinit var radiusOverlay: RadiusOverlayView
     private lateinit var sculptPad: SculptPadLayout
+    private lateinit var telemetryClient: TelemetryClient
 
     private var videoDecoder: VideoDecoder? = null
     private var videoReceiver: VideoPacketReceiver? = null
@@ -50,6 +51,13 @@ class MainActivity : Activity() {
         // 3. Inicializa cliente USB e despachante
         usbClient = UsbSocketClient()
         dispatcher = SculptTouchDispatcher(usbClient)
+
+        // 3.1. Inicializa o cliente de telemetria bidirecional do Blender
+        telemetryClient = TelemetryClient().apply {
+            onTelemetryReceived = { data ->
+                sculptPad.updateBrushTelemetry(data)
+            }
+        }
 
         // 4. Cria a Viewport: Superfície de Vídeo (Fundo) + Canvas de Captura 90Hz + Overlay de Raio
         videoSurfaceView = VideoSurfaceView(this).apply {
@@ -218,12 +226,14 @@ class MainActivity : Activity() {
         super.onResume()
         oneUiShield.setupImmersiveMode(window.decorView)
         usbClient.start()
+        telemetryClient.start()
         videoReceiver?.start()
     }
 
     override fun onPause() {
         super.onPause()
         videoReceiver?.stop()
+        telemetryClient.stop()
         usbClient.stop()
     }
 

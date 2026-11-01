@@ -61,6 +61,16 @@ class TouchSliderView(
     var onValueChanged: ((Float, Boolean) -> Unit)? = null
     var onActionEmitted: ((Byte) -> Unit)? = null
 
+    /**
+     * Atualiza o valor recebido da telemetria do Blender sem disparar ação de toque de volta.
+     */
+    fun updateValueQuietly(value: Float) {
+        if (!isDragging) {
+            currentValue = value.coerceIn(minValue, maxValue)
+            invalidate()
+        }
+    }
+
     private var lastTouchY = 0f
     private var isDragging = false
     private val thumbRect = RectF()
