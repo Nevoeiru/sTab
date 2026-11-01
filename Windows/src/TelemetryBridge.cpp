@@ -156,6 +156,8 @@ void TelemetryBridge::RunUdpListener() {
             int bytes = recvfrom(m_udpSocket, buffer, sizeof(buffer) - 2, 0, (sockaddr*)&senderAddr, &addrLen);
 
             if (bytes > 0) {
+                buffer[bytes] = '\0'; // Garante string válida para strstr
+
                 // Parse simplificado dos campos essenciais do Blender para a HUD
                 if (m_blenderCb) {
                     char brush[64] = "Clay";
@@ -194,9 +196,10 @@ void TelemetryBridge::RunUdpListener() {
                 }
 
                 // Adiciona delimitador newline para facilitar a leitura no Android
-                if (buffer[bytes - 1] != '\n') {
+                if (bytes > 0 && buffer[bytes - 1] != '\n') {
                     buffer[bytes] = '\n';
                     bytes++;
+                    buffer[bytes] = '\0';
                 }
 
                 EnterCriticalSection(&m_lock);

@@ -273,25 +273,18 @@ int main(int argc, char* argv[]) {
 
     // 3. Inicializa a Janela HUD Gráfica do Servidor
     ServerHud serverHud;
-    HudTelemetryState hudState = {};
-    hudState.displayWidth = vidWidth;
-    hudState.displayHeight = vidHeight;
-    hudState.is1610Native = capture.IsUsingVirtualDisplay();
+    serverHud.SetDisplayResolution(vidWidth, vidHeight, capture.IsUsingVirtualDisplay());
     serverHud.Start();
-    serverHud.UpdateTelemetry(hudState);
 
-    // Callbacks de telemetria de entrada para a HUD
-    tcpServer.SetInputPacketCallback([&serverHud, &hudState, vidWidth, vidHeight](const InputPacket& pkt) {
+    // Callbacks de telemetria de entrada para a HUD (Thread-Safe)
+    tcpServer.SetInputPacketCallback([&serverHud, vidWidth, vidHeight](const InputPacket& pkt) {
         if (pkt.packetType == PACKET_TYPE_PEN) {
-            hudState.penPressure = pkt.pressure;
-            hudState.penX = (int)(((double)pkt.x / 65535.0) * vidWidth);
-            hudState.penY = (int)(((double)pkt.y / 65535.0) * vidHeight);
-            hudState.penTiltX = (float)pkt.tiltX;
-            hudState.penTiltY = (float)pkt.tiltY;
-            hudState.isContact = (pkt.flags & FLAG_PEN_CONTACT) != 0;
-            hudState.isHover = (pkt.flags & FLAG_PEN_HOVER) != 0;
-            hudState.barrelButton = (pkt.flags & FLAG_PEN_BARREL_BUTTON) != 0;
-            serverHud.UpdateTelemetry(hudState);
+            int px = (int)(((double)pkt.x / 65535.0) * vidWidth);
+            int py = (int)(((double)pkt.y / 65535.0) * vidHeight);
+            bool contact = (pkt.flags & FLAG_PEN_CONTACT) != 0;
+            bool hover = (pkt.flags & FLAG_PEN_HOVER) != 0;
+            bool barrel = (pkt.flags & FLAG_PEN_BARREL_BUTTON) != 0;
+            serverHud.UpdatePenTelemetry(px, py, pkt.pressure, (float)pkt.tiltX, (float)pkt.tiltY, contact, hover, barrel);
         }
     });
 
@@ -302,15 +295,10 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // 4. Inicializa a ponte de telemetria do Blender (porta 27185)
+    // 4. Inicializa a ponte de telemetria do Blender (porta 27185 - Thread-Safe)
     TelemetryBridge telemetryBridge(27185);
-    telemetryBridge.SetBlenderDataCallback([&serverHud, &hudState](const char* brush, float size, float strength, bool symX) {
-        strncpy(hudState.activeBrush, brush, 63);
-        hudState.activeBrush[63] = '\0';
-        hudState.brushRadius = size;
-        hudState.brushStrength = strength;
-        hudState.symmetryX = symX;
-        serverHud.UpdateTelemetry(hudState);
+    telemetryBridge.SetBlenderDataCallback([&serverHud](const char* brush, float size, float strength, bool symX) {
+        serverHud.UpdateBlenderStats(brush, size, strength, symX, false, false);
     });
     telemetryBridge.Start();
 
@@ -352,31 +340,27 @@ int main(int argc, char* argv[]) {
     while (g_running) {
         Sleep(500);
 
-        hudState.clientConnected = tcpServer.IsClientConnected();
-        hudState.videoStreaming = videoServer.IsClientConnected();
-        hudState.blenderConnected = telemetryBridge.IsTabletConnected();
-        hudState.totalBytesSent = videoServer.GetTotalBytesSent();
-
         uint64_t currentTel = tcpServer.GetTotalPacketsReceived();
         uint64_t currentVid = videoServer.GetTotalFramesSent();
         uint64_t currentBytes = videoServer.GetTotalBytesSent();
 
-        hudState.currentFps = (float)(currentVid - lastVideoFrames) * 2.0f;
+        float currentFps = (float)(currentVid - lastVideoFrames) * 2.0f;
         float bytesSec = (float)(currentBytes - lastBytesSent) * 2.0f;
-        hudState.bitrateMbps = (bytesSec * 8.0f) / 1000000.0f;
+        float bitrateMbps = (bytesSec * 8.0f) / 1000000.0f;
 
-        lastTelemetryPackets = currentTel;
-        lastVideoFrames = currentVid;
-        lastBytesSent = currentBytes;
-
-        serverHud.UpdateTelemetry(hudState);
+        serverHud.UpdateConnectionState(tcpServer.IsClientConnected(), videoServer.IsClientConnected(), telemetryBridge.IsTabletConnected());
+        serverHud.UpdateVideoStats(currentFps, bitrateMbps, currentBytes);
 
         if (tcpServer.IsClientConnected() || videoServer.IsClientConnected()) {
             printf("[Status] Telemetria: ~%.0f p/s | Video Stream: ~%.0f FPS | Transmitido: %.2f MB\n",
                    (double)(currentTel - lastTelemetryPackets) * 2.0,
-                   (double)hudState.currentFps,
-                   (double)hudState.totalBytesSent / (1024.0 * 1024.0));
+                   (double)currentFps,
+                   (double)currentBytes / (1024.0 * 1024.0));
         }
+
+        lastTelemetryPackets = currentTel;
+        lastVideoFrames = currentVid;
+        lastBytesSent = currentBytes;
     }
 
     if (hCaptureThread) {

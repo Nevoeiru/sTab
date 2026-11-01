@@ -161,12 +161,38 @@ void VideoServer::SendNalPacket(const uint8_t* data, size_t size, bool isKeyFram
 
     EnterCriticalSection(&m_sendLock);
     if (m_clientSocket != INVALID_SOCKET) {
-        // Prefixo de 4 bytes com o comprimento exato do pacote NAL
+        // 1. Prefixo de 4 bytes com o comprimento Little-Endian do pacote NAL
         uint32_t packetLen = (uint32_t)size;
-        int sentHead = send(m_clientSocket, (const char*)&packetLen, 4, 0);
-        int sentBody = send(m_clientSocket, (const char*)data, (int)size, 0);
+        const char* pHead = (const char*)&packetLen;
+        int headRemaining = 4;
+        bool error = false;
 
-        if (sentHead <= 0 || sentBody <= 0) {
+        while (headRemaining > 0) {
+            int sent = send(m_clientSocket, pHead, headRemaining, 0);
+            if (sent <= 0) {
+                error = true;
+                break;
+            }
+            pHead += sent;
+            headRemaining -= sent;
+        }
+
+        // 2. Payload H.264 NAL completo
+        if (!error) {
+            const char* pBody = (const char*)data;
+            int bodyRemaining = (int)size;
+            while (bodyRemaining > 0) {
+                int sent = send(m_clientSocket, pBody, bodyRemaining, 0);
+                if (sent <= 0) {
+                    error = true;
+                    break;
+                }
+                pBody += sent;
+                bodyRemaining -= sent;
+            }
+        }
+
+        if (error) {
             closesocket(m_clientSocket);
             m_clientSocket = INVALID_SOCKET;
             m_clientConnected = false;

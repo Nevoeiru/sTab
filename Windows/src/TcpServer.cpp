@@ -176,6 +176,10 @@ void TcpServer::HandleIncomingData(const uint8_t* buffer, int bytesReceived) {
     const int PACKET_SIZE = sizeof(InputPacket); // Exatamente 16 bytes
 
     for (int i = 0; i < bytesReceived; ++i) {
+        if (m_bufferBytesAccumulated < 0 || m_bufferBytesAccumulated >= PACKET_SIZE) {
+            m_bufferBytesAccumulated = 0;
+        }
+
         m_packetBuffer[m_bufferBytesAccumulated++] = buffer[i];
 
         if (m_bufferBytesAccumulated == PACKET_SIZE) {

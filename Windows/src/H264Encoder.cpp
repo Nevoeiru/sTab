@@ -151,6 +151,8 @@ bool H264Encoder::Initialize(int width, int height, int fps, int bitrateBps) {
     hr = m_encoderMFT->ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, 0);
     hr = m_encoderMFT->ProcessMessage(MFT_MESSAGE_NOTIFY_START_OF_STREAM, 0);
 
+    m_nv12Buffer.resize(m_width * m_height * 3 / 2);
+
     m_initialized = true;
     printf("[H264Encoder] Codificador H.264 Low-Latency GPU inicializado (%dx%d @ %d FPS, %d Mbps).\n",
            m_width, m_height, m_fps, m_bitrateBps / 1000000);
@@ -179,6 +181,9 @@ void H264Encoder::Shutdown() {
         m_encoderMFT->Release();
         m_encoderMFT = NULL;
     }
+
+    m_nv12Buffer.clear();
+    m_nv12Buffer.shrink_to_fit();
 
     MFShutdown();
     m_initialized = false;
@@ -233,8 +238,10 @@ bool H264Encoder::EncodeFrame(ID3D11Device* pDevice, ID3D11DeviceContext* pConte
     int uvSize = ySize / 2;
     int nv12TotalSize = ySize + uvSize;
 
-    std::vector<uint8_t> nv12Buffer(nv12TotalSize);
-    uint8_t* pY = nv12Buffer.data();
+    if ((int)m_nv12Buffer.size() < nv12TotalSize) {
+        m_nv12Buffer.resize(nv12TotalSize);
+    }
+    uint8_t* pY = m_nv12Buffer.data();
     uint8_t* pUV = pY + ySize;
 
     const uint8_t* pSrc = (const uint8_t*)mapped.pData;
@@ -270,7 +277,7 @@ bool H264Encoder::EncodeFrame(ID3D11Device* pDevice, ID3D11DeviceContext* pConte
 
     BYTE* pDest = NULL;
     pInMediaBuffer->Lock(&pDest, NULL, NULL);
-    memcpy(pDest, nv12Buffer.data(), nv12TotalSize);
+    memcpy(pDest, m_nv12Buffer.data(), nv12TotalSize);
     pInMediaBuffer->Unlock();
     pInMediaBuffer->SetCurrentLength(nv12TotalSize);
 
@@ -312,9 +319,9 @@ bool H264Encoder::EncodeFrame(ID3D11Device* pDevice, ID3D11DeviceContext* pConte
             }
 
             if (hr == (HRESULT)0xC00D36B1L) { // MF_E_TRANSFORM_STREAM_CHANGE
-                if (pCreatedSample) {
-                    pCreatedSample->Release();
-                    pCreatedSample = NULL;
+                if (outBuffer.pSample) {
+                    outBuffer.pSample->Release();
+                    outBuffer.pSample = NULL;
                 }
                 IMFMediaType* pNewType = NULL;
                 hr = m_encoderMFT->GetOutputAvailableType(0, 0, &pNewType);
@@ -326,19 +333,24 @@ bool H264Encoder::EncodeFrame(ID3D11Device* pDevice, ID3D11DeviceContext* pConte
             }
 
             if (hr == (HRESULT)0xC00D6D72L) { // MF_E_TRANSFORM_NEED_MORE_INPUT
-                if (pCreatedSample) pCreatedSample->Release();
+                if (outBuffer.pSample) {
+                    outBuffer.pSample->Release();
+                    outBuffer.pSample = NULL;
+                }
                 break;
             }
 
             if (FAILED(hr)) {
-                if (pCreatedSample) pCreatedSample->Release();
+                if (outBuffer.pSample) {
+                    outBuffer.pSample->Release();
+                    outBuffer.pSample = NULL;
+                }
                 break;
             }
 
-            IMFSample* sampleWithData = outBuffer.pSample ? outBuffer.pSample : pCreatedSample;
-            if (sampleWithData) {
+            if (outBuffer.pSample) {
                 IMFMediaBuffer* buf = NULL;
-                sampleWithData->ConvertToContiguousBuffer(&buf);
+                outBuffer.pSample->ConvertToContiguousBuffer(&buf);
                 if (buf) {
                     BYTE* pData = NULL;
                     DWORD len = 0;
@@ -346,20 +358,14 @@ bool H264Encoder::EncodeFrame(ID3D11Device* pDevice, ID3D11DeviceContext* pConte
 
                     if (pData && len > 0 && m_onPacketCb) {
                         UINT32 isCleanPoint = 0;
-                        sampleWithData->GetUINT32(MFSampleExtension_CleanPoint, &isCleanPoint);
+                        outBuffer.pSample->GetUINT32(MFSampleExtension_CleanPoint, &isCleanPoint);
                         m_onPacketCb((const uint8_t*)pData, (size_t)len, isCleanPoint != 0);
                     }
 
                     buf->Unlock();
                     buf->Release();
                 }
-            }
 
-            if (pCreatedSample) {
-                pCreatedSample->Release();
-                pCreatedSample = NULL;
-            }
-            if (outBuffer.pSample && outBuffer.pSample != pCreatedSample) {
                 outBuffer.pSample->Release();
                 outBuffer.pSample = NULL;
             }

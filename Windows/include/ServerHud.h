@@ -55,6 +55,11 @@ public:
 
     bool Start(HINSTANCE hInstance = NULL);
     void UpdateTelemetry(const HudTelemetryState& state);
+    void UpdatePenTelemetry(int x, int y, int pressure, float tiltX, float tiltY, bool contact, bool hover, bool barrel);
+    void UpdateVideoStats(float fps, float mbps, uint64_t totalBytes);
+    void UpdateBlenderStats(const char* brush, float radius, float strength, bool symX, bool symY, bool symZ);
+    void UpdateConnectionState(bool clientConnected, bool videoStreaming, bool blenderConnected);
+    void SetDisplayResolution(int width, int height, bool is1610);
     void Stop();
     bool IsOpen() const;
 

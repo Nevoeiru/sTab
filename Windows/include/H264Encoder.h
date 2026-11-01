@@ -79,6 +79,7 @@ private:
 
     OnH264PacketCallback m_onPacketCb;
     UINT64 m_frameIndex;
+    std::vector<uint8_t> m_nv12Buffer;
 };
 
 #endif // STAB_H264_ENCODER_H

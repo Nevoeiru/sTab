@@ -74,6 +74,57 @@ void ServerHud::UpdateTelemetry(const HudTelemetryState& state) {
     LeaveCriticalSection(&m_lock);
 }
 
+void ServerHud::UpdatePenTelemetry(int x, int y, int pressure, float tiltX, float tiltY, bool contact, bool hover, bool barrel) {
+    EnterCriticalSection(&m_lock);
+    m_state.penX = x;
+    m_state.penY = y;
+    m_state.penPressure = pressure;
+    m_state.penTiltX = tiltX;
+    m_state.penTiltY = tiltY;
+    m_state.isContact = contact;
+    m_state.isHover = hover;
+    m_state.barrelButton = barrel;
+    LeaveCriticalSection(&m_lock);
+}
+
+void ServerHud::UpdateVideoStats(float fps, float mbps, uint64_t totalBytes) {
+    EnterCriticalSection(&m_lock);
+    m_state.currentFps = fps;
+    m_state.bitrateMbps = mbps;
+    m_state.totalBytesSent = totalBytes;
+    LeaveCriticalSection(&m_lock);
+}
+
+void ServerHud::UpdateBlenderStats(const char* brush, float radius, float strength, bool symX, bool symY, bool symZ) {
+    EnterCriticalSection(&m_lock);
+    if (brush && brush[0] != '\0') {
+        strncpy(m_state.activeBrush, brush, 63);
+        m_state.activeBrush[63] = '\0';
+    }
+    m_state.brushRadius = radius;
+    m_state.brushStrength = strength;
+    m_state.symmetryX = symX;
+    m_state.symmetryY = symY;
+    m_state.symmetryZ = symZ;
+    LeaveCriticalSection(&m_lock);
+}
+
+void ServerHud::UpdateConnectionState(bool clientConnected, bool videoStreaming, bool blenderConnected) {
+    EnterCriticalSection(&m_lock);
+    m_state.clientConnected = clientConnected;
+    m_state.videoStreaming = videoStreaming;
+    m_state.blenderConnected = blenderConnected;
+    LeaveCriticalSection(&m_lock);
+}
+
+void ServerHud::SetDisplayResolution(int width, int height, bool is1610) {
+    EnterCriticalSection(&m_lock);
+    m_state.displayWidth = width;
+    m_state.displayHeight = height;
+    m_state.is1610Native = is1610;
+    LeaveCriticalSection(&m_lock);
+}
+
 DWORD WINAPI ServerHud::WindowThreadStatic(LPVOID lpParam) {
     auto* self = (ServerHud*)lpParam;
     self->WindowThread();
@@ -386,7 +437,7 @@ void ServerHud::Render(HDC hdc) {
     TextOutW(memDC, c1X + 16, cardY + 170, coordBuf, (int)wcslen(coordBuf));
 
     wchar_t tiltBuf[64];
-    swprintf_s(tiltBuf, L"Tilt: X:%.0f° | Y:%.0f°", s.penTiltX, s.penTiltY);
+    swprintf_s(tiltBuf, L"Tilt: X:%.0f\u00B0 | Y:%.0f\u00B0", s.penTiltX, s.penTiltY);
     TextOutW(memDC, c1X + 16, cardY + 195, tiltBuf, (int)wcslen(tiltBuf));
 
     wchar_t barrelBuf[64];
@@ -434,9 +485,9 @@ void ServerHud::Render(HDC hdc) {
 
     SelectObject(memDC, m_fontMono);
     SetTextColor(memDC, RGB(0, 230, 118));
-    TextOutW(memDC, c2X + 16, cardY + 195, L"● 27183 [Input S-Pen]", 21);
-    TextOutW(memDC, c2X + 16, cardY + 215, L"● 27184 [Vídeo 90 FPS]", 22);
-    TextOutW(memDC, c2X + 16, cardY + 235, L"● 27185 [Companion]", 19);
+    TextOutW(memDC, c2X + 16, cardY + 195, L"\u25CF 27183 [Input S-Pen]", 21);
+    TextOutW(memDC, c2X + 16, cardY + 215, L"\u25CF 27184 [Vídeo 90 FPS]", 22);
+    TextOutW(memDC, c2X + 16, cardY + 235, L"\u25CF 27185 [Companion]", 19);
 
     // --- CARTÃO 3: Blender Companion ---
     int c3X = c2X + cardW + 16;
@@ -450,7 +501,13 @@ void ServerHud::Render(HDC hdc) {
     SelectObject(memDC, m_fontBold);
     SetTextColor(memDC, RGB(255, 179, 0));
     wchar_t wBrush[64];
-    MultiByteToWideChar(CP_UTF8, 0, s.activeBrush, -1, wBrush, 64);
+    wBrush[0] = L'\0';
+    if (s.activeBrush[0] != '\0') {
+        MultiByteToWideChar(CP_UTF8, 0, s.activeBrush, -1, wBrush, 63);
+        wBrush[63] = L'\0';
+    } else {
+        wcscpy_s(wBrush, L"Aguardando Blender...");
+    }
     TextOutW(memDC, c3X + 16, cardY + 70, wBrush, (int)wcslen(wBrush));
 
     SelectObject(memDC, m_fontRegular);
