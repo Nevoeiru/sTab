@@ -26,6 +26,11 @@ g++ -std=c++17 -O3 -Wall -Wextra -I"%SCRIPT_DIR%include" ^
     -o "%SCRIPT_DIR%bin\sTab_server.exe" ^
     -lws2_32 -luser32 -ld3d11 -ldxgi -lmfplat -lmfuuid -lole32 -loleaut32 -static -s
 
+g++ -std=c++17 -O3 -Wall -Wextra -I"%SCRIPT_DIR%include" ^
+    "%SCRIPT_DIR%src\sTab_launcher.cpp" ^
+    -o "%SCRIPT_DIR%bin\sTab_launcher.exe" ^
+    -static -s
+
 if %ERRORLEVEL% equ 0 (
     echo.
     echo [SUCESSO] Compilacao concluida com exito!

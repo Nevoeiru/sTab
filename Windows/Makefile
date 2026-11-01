@@ -10,8 +10,9 @@ BINDIR = bin
 SOURCES = $(SRCDIR)/Main.cpp $(SRCDIR)/PointerInjector.cpp $(SRCDIR)/GestureTranslator.cpp $(SRCDIR)/TcpServer.cpp $(SRCDIR)/DxgiCapture.cpp $(SRCDIR)/H264Encoder.cpp $(SRCDIR)/VideoServer.cpp
 OBJECTS = $(patsubst $(SRCDIR)/%.cpp,$(OBJDIR)/%.o,$(SOURCES))
 TARGET = $(BINDIR)/sTab_server.exe
+LAUNCHER_TARGET = $(BINDIR)/sTab_launcher.exe
 
-all: directories $(TARGET)
+all: directories $(TARGET) $(LAUNCHER_TARGET)
 
 directories:
 	@if not exist $(OBJDIR) mkdir $(OBJDIR)
@@ -21,6 +22,11 @@ $(TARGET): $(OBJECTS)
 	@echo [LINK] $@
 	@$(CXX) $(OBJECTS) -o $@ $(LDFLAGS)
 	@echo [SUCESSO] Executavel gerado em: $@
+
+$(LAUNCHER_TARGET): $(SRCDIR)/sTab_launcher.cpp
+	@echo [LINK] $@
+	@$(CXX) $(CXXFLAGS) $< -o $@ -static -s
+	@echo [SUCESSO] Launcher gerado em: $@
 
 $(OBJDIR)/%.o: $(SRCDIR)/%.cpp
 	@echo [CXX] $<
