@@ -12,7 +12,8 @@ import android.widget.TextView
 
 /**
  * Botão modular de alta densidade para a barra lateral compacta (SculptPad Rail).
- * Suporta ícones lineart vetoriais e texto curto para modificadores de teclado (Shift, Ctrl, Alt).
+ * Suporta ícones lineart vetoriais e texto curto para modificadores de teclado (Shift, Ctrl, Alt)
+ * com trava de toque inteligente (Sticky Lock) para superar o Palm Rejection de hardware do tablet.
  */
 class CompactRailButton @JvmOverloads constructor(
     context: Context,
@@ -32,6 +33,9 @@ class CompactRailButton @JvmOverloads constructor(
     var onHoverChanged: ((isHovering: Boolean, button: CompactRailButton) -> Unit)? = null
 
     private var isPressedState = false
+    private var isLocked = false
+    private var downTimeMs: Long = 0L
+    private var baseText: String = ""
 
     init {
         isClickable = true
@@ -61,6 +65,7 @@ class CompactRailButton @JvmOverloads constructor(
     }
 
     fun setText(text: String, colorHex: String = "#E0E0E6") {
+        baseText = text
         textView.text = text
         textView.setTextColor(Color.parseColor(colorHex))
         textView.visibility = VISIBLE
@@ -75,13 +80,21 @@ class CompactRailButton @JvmOverloads constructor(
             cornerRadius = cornerPx
             if (isActive) {
                 setColor(Color.parseColor("#282A36"))
-                setStroke((1.8f * density).toInt(), Color.parseColor(activeColorHex))
+                setStroke((2.2f * density).toInt(), Color.parseColor(activeColorHex))
             } else {
                 setColor(Color.parseColor("#1B1C22"))
                 setStroke((1.0f * density).toInt(), Color.parseColor("#2D2E38"))
             }
         }
         background = bg
+
+        if (textView.visibility == VISIBLE) {
+            val color = if (isActive) Color.parseColor(activeColorHex) else Color.parseColor("#E0E0E6")
+            textView.setTextColor(color)
+            if (isHoldModifier) {
+                textView.text = if (isLocked) "\u25CF$baseText" else baseText
+            }
+        }
 
         if (iconView.visibility == VISIBLE) {
             val tint = if (isActive) Color.parseColor(activeColorHex) else Color.parseColor("#C8C9D4")
@@ -93,16 +106,46 @@ class CompactRailButton @JvmOverloads constructor(
         if (isHoldModifier) {
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
-                    isPressedState = true
-                    updateVisualState(isActive = true)
-                    performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
-                    onHoldDown?.invoke()
+                    downTimeMs = System.currentTimeMillis()
+                    if (isLocked) {
+                        // Se já estava travado, um novo toque desliga o modificador
+                        isLocked = false
+                        isPressedState = false
+                        updateVisualState(isActive = false)
+                        performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
+                        onHoldUp?.invoke()
+                    } else {
+                        // Ativa o modificador
+                        isPressedState = true
+                        updateVisualState(isActive = true)
+                        performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
+                        onHoldDown?.invoke()
+                    }
                     return true
                 }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    isPressedState = false
-                    updateVisualState(isActive = false)
-                    onHoldUp?.invoke()
+                MotionEvent.ACTION_UP -> {
+                    val duration = System.currentTimeMillis() - downTimeMs
+                    if (duration < 350) {
+                        // Toque rápido: trava o modificador ATIVO (Sticky Lock)
+                        // Permite esculpir com a S-Pen sem que o palm rejection do hardware corte o dedo
+                        isLocked = true
+                        isPressedState = true
+                        updateVisualState(isActive = true)
+                    } else {
+                        // Segurou por mais de 350ms: desliga ao soltar
+                        isLocked = false
+                        isPressedState = false
+                        updateVisualState(isActive = false)
+                        onHoldUp?.invoke()
+                    }
+                    return true
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    // Quando a S-Pen toca a tela, o hardware Wacom EMR envia ACTION_CANCEL ao dedo.
+                    // Mantém o modificador TRAVADO ATIVO para que o usuário continue esculpindo com Shift!
+                    isLocked = true
+                    isPressedState = true
+                    updateVisualState(isActive = true)
                     return true
                 }
             }
@@ -137,7 +180,7 @@ class CompactRailButton @JvmOverloads constructor(
                 return true
             }
             MotionEvent.ACTION_HOVER_EXIT -> {
-                if (!isPressedState) {
+                if (!isPressedState && !isLocked) {
                     updateVisualState(isActive = false)
                 }
                 onHoverChanged?.invoke(false, this)
@@ -152,4 +195,3 @@ class CompactRailButton @JvmOverloads constructor(
         return true
     }
 }
-

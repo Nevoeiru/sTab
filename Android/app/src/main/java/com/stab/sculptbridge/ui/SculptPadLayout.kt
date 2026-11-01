@@ -174,7 +174,7 @@ class SculptPadLayout(
             onHoldDown = { onActionEmitted(Protocol.SCULPTPAD_HOLD_SHIFT_DOWN) }
             onHoldUp = { onActionEmitted(Protocol.SCULPTPAD_HOLD_SHIFT_UP) }
         }
-        attachTooltip(shiftBtn, "Suavizar / Smooth (Shift)")
+        attachTooltip(shiftBtn, "Suavizar / Smooth (Shift - Toque p/ Travar)")
         addView(shiftBtn)
 
         // 5. Modificador CTRL (Invert Brush Hold)
@@ -186,7 +186,7 @@ class SculptPadLayout(
             onHoldDown = { onActionEmitted(Protocol.SCULPTPAD_HOLD_CTRL_DOWN) }
             onHoldUp = { onActionEmitted(Protocol.SCULPTPAD_HOLD_CTRL_UP) }
         }
-        attachTooltip(ctrlBtn, "Inverter / Subtrair (Ctrl)")
+        attachTooltip(ctrlBtn, "Inverter / Subtrair (Ctrl - Toque p/ Travar)")
         addView(ctrlBtn)
 
         // 6. Modificador ALT (Mask / Navigation Hold)
@@ -198,7 +198,7 @@ class SculptPadLayout(
             onHoldDown = { onActionEmitted(Protocol.SCULPTPAD_HOLD_ALT_DOWN) }
             onHoldUp = { onActionEmitted(Protocol.SCULPTPAD_HOLD_ALT_UP) }
         }
-        attachTooltip(altBtn, "Máscara / Contexto (Alt)")
+        attachTooltip(altBtn, "Máscara / Contexto (Alt - Toque p/ Travar)")
         addView(altBtn)
 
         // 7. Ação Rápida Remesh (Ctrl+R no Blender)
