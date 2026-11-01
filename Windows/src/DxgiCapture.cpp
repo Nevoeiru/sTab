@@ -14,6 +14,7 @@ DxgiCapture::DxgiCapture()
     , m_initialized(false)
     , m_hasAcquiredFrame(false)
     , m_isUsingVirtualDisplay(false)
+    , m_forceMirror(false)
 {
 }
 
@@ -52,7 +53,7 @@ bool DxgiCapture::CreateD3DDevice(IDXGIAdapter* adapter) {
     return true;
 }
 
-bool DxgiCapture::SetupDuplication() {
+bool DxgiCapture::SetupDuplication(bool forceMirror) {
     if (m_duplication) {
         m_duplication->Release();
         m_duplication = NULL;
@@ -100,10 +101,12 @@ bool DxgiCapture::SetupDuplication() {
             int left = oDesc.DesktopCoordinates.left;
             int top = oDesc.DesktopCoordinates.top;
 
-            int score = 10; // Base score para monitor primario
+            int score = 10; // Base score
             bool isSecondary = (left != 0 || top != 0 || o > 0 || a > 0);
-            if (isSecondary) {
-                score += 100; // Prioriza monitor secundario estendido
+            if (forceMirror) {
+                if (!isSecondary) score += 200; // Prioriza monitor primário no modo espelhado
+            } else {
+                if (isSecondary) score += 100; // Prioriza monitor estendido
             }
             if (w == 1920 && h == 1080) {
                 score += 50; // Alvo preferencial 1080p
@@ -204,8 +207,9 @@ bool DxgiCapture::SetupDuplication() {
     return true;
 }
 
-bool DxgiCapture::Initialize() {
+bool DxgiCapture::Initialize(bool forceMirror) {
     if (m_initialized) return true;
+    m_forceMirror = forceMirror;
 
     // Vincula a thread ao Desktop de entrada ativo
     HDESK hDesk = OpenInputDesktop(0, FALSE, GENERIC_ALL);
@@ -214,7 +218,7 @@ bool DxgiCapture::Initialize() {
         CloseDesktop(hDesk);
     }
 
-    if (!SetupDuplication()) return false;
+    if (!SetupDuplication(forceMirror)) return false;
 
     m_initialized = true;
     printf("[DxgiCapture] Desktop Duplication GPU inicializado com sucesso (%dx%d).\n", m_width, m_height);
@@ -277,7 +281,7 @@ bool DxgiCapture::AcquireNextFrame(ID3D11Texture2D** ppTexture, DWORD timeoutMs,
 
     if (hr == DXGI_ERROR_ACCESS_LOST) {
         printf("[DxgiCapture] Acesso ao display perdido (mudanca de modo/resolucao). Reinicializando...\n");
-        SetupDuplication();
+        SetupDuplication(m_forceMirror);
         return false;
     }
 

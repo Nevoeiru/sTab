@@ -25,9 +25,11 @@ class CompactRailButton @JvmOverloads constructor(
 
     var activeColorHex: String = "#00E5FF" // Ciano por padrão
     var isHoldModifier: Boolean = false
+    var tooltipText: String = ""
     var onHoldDown: (() -> Unit)? = null
     var onHoldUp: (() -> Unit)? = null
     var onActionClick: (() -> Unit)? = null
+    var onHoverChanged: ((isHovering: Boolean, button: CompactRailButton) -> Unit)? = null
 
     private var isPressedState = false
 
@@ -125,6 +127,24 @@ class CompactRailButton @JvmOverloads constructor(
             }
             return true
         }
+    }
+
+    override fun onHoverEvent(event: MotionEvent): Boolean {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_HOVER_ENTER -> {
+                updateVisualState(isActive = true)
+                onHoverChanged?.invoke(true, this)
+                return true
+            }
+            MotionEvent.ACTION_HOVER_EXIT -> {
+                if (!isPressedState) {
+                    updateVisualState(isActive = false)
+                }
+                onHoverChanged?.invoke(false, this)
+                return true
+            }
+        }
+        return super.onHoverEvent(event)
     }
 
     override fun performClick(): Boolean {

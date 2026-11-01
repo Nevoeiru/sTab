@@ -2,8 +2,10 @@ package com.stab.sculptbridge
 
 import android.app.Activity
 import android.graphics.Color
+import android.graphics.Rect
 import android.os.Build
 import android.os.Bundle
+import android.view.Gravity
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.Surface
@@ -12,8 +14,10 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.Toast
 import com.stab.sculptbridge.ui.AspectViewportLayout
+import com.stab.sculptbridge.ui.FloatingExpandTab
 import com.stab.sculptbridge.ui.RadiusOverlayView
 import com.stab.sculptbridge.ui.SculptPadLayout
+import com.stab.sculptbridge.ui.ToolHoverBadge
 import com.stab.sculptbridge.video.VideoDecoder
 import com.stab.sculptbridge.video.VideoPacketReceiver
 import com.stab.sculptbridge.video.VideoSurfaceView
@@ -37,7 +41,9 @@ class MainActivity : Activity() {
     private var videoReceiver: VideoPacketReceiver? = null
 
     private lateinit var rootContainer: LinearLayout
-    private lateinit var viewportContainer: FrameLayout
+    private lateinit var viewportContainer: AspectViewportLayout
+    private lateinit var toolHoverBadge: ToolHoverBadge
+    private lateinit var expandTab: FloatingExpandTab
     private var isLeftHandMode = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -51,16 +57,29 @@ class MainActivity : Activity() {
 
         // 3. Inicializa cliente USB e despachante
         usbClient = UsbSocketClient()
-        dispatcher = SculptTouchDispatcher(usbClient)
+        dispatcher = SculptTouchDispatcher(usbClient).apply {
+            onHoverStateChanged = { isHovering ->
+                runOnUiThread {
+                    if (isHovering) {
+                        toolHoverBadge.showBadge()
+                    } else {
+                        toolHoverBadge.hideBadge()
+                    }
+                }
+            }
+        }
 
         // 3.1. Inicializa o cliente de telemetria bidirecional do Blender
         telemetryClient = TelemetryClient().apply {
             onTelemetryReceived = { data ->
-                sculptPad.updateBrushTelemetry(data)
+                runOnUiThread {
+                    sculptPad.updateBrushTelemetry(data)
+                    toolHoverBadge.updateToolInfo(data.brushName, data.size.toFloat(), data.strength)
+                }
             }
         }
 
-        // 4. Cria a Viewport: Superfície de Vídeo (Fundo) + Canvas de Captura 90Hz + Overlay de Raio
+        // 4. Cria a Viewport: Superfície de Vídeo (Fundo) + Canvas de Captura + Overlay de Raio + HUD Tool Badge
         videoSurfaceView = VideoSurfaceView(this).apply {
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
@@ -90,11 +109,24 @@ class MainActivity : Activity() {
             visibility = android.view.View.GONE
         }
 
+        toolHoverBadge = ToolHoverBadge(this).apply {
+            val density = resources.displayMetrics.density
+            val badgeParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            ).apply {
+                topMargin = (16 * density).toInt()
+            }
+            layoutParams = badgeParams
+        }
+
         viewportContainer = AspectViewportLayout(this).apply {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f)
             addView(videoSurfaceView)
             addView(canvasView)
             addView(radiusOverlay)
+            addView(toolHoverBadge)
         }
 
         // 5. Cria a barra lateral tátil compacta SculptPad (54dp de largura)
@@ -118,6 +150,25 @@ class MainActivity : Activity() {
             }
         ).apply {
             layoutParams = LinearLayout.LayoutParams(padWidthPx, LinearLayout.LayoutParams.MATCH_PARENT)
+            onMinimizeClicked = {
+                visibility = android.view.View.GONE
+                expandTab.visibility = android.view.View.VISIBLE
+            }
+        }
+
+        // 5.1 Aba flutuante de restauração quando a barra estiver minimizada
+        expandTab = FloatingExpandTab(this).apply {
+            val tabWidth = (24 * density).toInt()
+            val tabHeight = (54 * density).toInt()
+            layoutParams = LinearLayout.LayoutParams(tabWidth, tabHeight).apply {
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            isLeftEdge = !isLeftHandMode
+            visibility = android.view.View.GONE
+            onExpandClicked = {
+                visibility = android.view.View.GONE
+                sculptPad.visibility = android.view.View.VISIBLE
+            }
         }
 
         // 6. Monta o container horizontal
@@ -129,6 +180,11 @@ class MainActivity : Activity() {
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
         }
+
+        // Garante multitoque simultâneo entre botões e área de desenho
+        (window.decorView as? ViewGroup)?.isMotionEventSplittingEnabled = true
+        rootContainer.isMotionEventSplittingEnabled = true
+        sculptPad.isMotionEventSplittingEnabled = true
 
         assembleLayout()
         setContentView(rootContainer)
@@ -145,14 +201,31 @@ class MainActivity : Activity() {
         }
     }
 
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        // Garante que o toque de dedo nos botões laterais seja sempre entregue, mesmo com S-Pen em hover ou toque
+        if (::sculptPad.isInitialized && sculptPad.visibility == android.view.View.VISIBLE &&
+            ev.getToolType(ev.actionIndex) == MotionEvent.TOOL_TYPE_FINGER) {
+            val padLoc = IntArray(2)
+            sculptPad.getLocationOnScreen(padLoc)
+            val padRect = Rect(padLoc[0], padLoc[1], padLoc[0] + sculptPad.width, padLoc[1] + sculptPad.height)
+            if (padRect.contains(ev.rawX.toInt(), ev.rawY.toInt())) {
+                return sculptPad.dispatchTouchEvent(ev)
+            }
+        }
+        return super.dispatchTouchEvent(ev)
+    }
+
     private fun assembleLayout() {
         rootContainer.removeAllViews()
+        expandTab.isLeftEdge = !isLeftHandMode
         if (isLeftHandMode) {
             // Modo Canhoto: Viewport na esquerda, SculptPad na borda direita
             rootContainer.addView(viewportContainer)
             rootContainer.addView(sculptPad)
+            rootContainer.addView(expandTab)
         } else {
             // Modo Destro (Padrão): SculptPad na borda esquerda, Viewport na direita
+            rootContainer.addView(expandTab)
             rootContainer.addView(sculptPad)
             rootContainer.addView(viewportContainer)
         }
@@ -161,6 +234,7 @@ class MainActivity : Activity() {
     private fun swapHandOrientation() {
         isLeftHandMode = !isLeftHandMode
         sculptPad.updateEdgeMargin(isLeftEdge = !isLeftHandMode)
+        expandTab.isLeftEdge = !isLeftHandMode
         assembleLayout()
         val side = if (isLeftHandMode) "Canhoto (Direita)" else "Destro (Esquerda)"
         Toast.makeText(this, "SculptPad alternado para modo $side", Toast.LENGTH_SHORT).show()
@@ -196,7 +270,15 @@ class MainActivity : Activity() {
             onIdrNeeded = {
                 requestKeyFrameFromHost()
             }
-        )
+        ).apply {
+            onResolutionChanged = { w, h ->
+                runOnUiThread {
+                    if (w > 0 && h > 0) {
+                        viewportContainer.targetAspectRatio = w.toFloat() / h.toFloat()
+                    }
+                }
+            }
+        }
         decoder.start()
         videoDecoder = decoder
 

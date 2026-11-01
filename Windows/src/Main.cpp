@@ -231,9 +231,16 @@ int main(int argc, char* argv[]) {
 
     TcpServer tcpServer(27183);
 
+    bool forceMirror = false;
+    for (int i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "--mirror") == 0) {
+            forceMirror = true;
+        }
+    }
+
     // 2. Inicializa o pipeline de captura e streaming de vídeo
     DxgiCapture capture;
-    bool hasCapture = capture.Initialize();
+    bool hasCapture = capture.Initialize(forceMirror);
 
     int vidWidth = hasCapture ? capture.GetWidth() : 1920;
     int vidHeight = hasCapture ? capture.GetHeight() : 1080;
@@ -246,6 +253,7 @@ int main(int argc, char* argv[]) {
            deskX, deskY, vidWidth, vidHeight);
 
     H264Encoder encoder;
+    encoder.SetDisplayOrigin(deskX, deskY);
     bool hasEncoder = encoder.Initialize(vidWidth, vidHeight, 60, 20000000);
     if (!hasEncoder) {
         printf("[Main] Aviso: Falha ao inicializar o codificador H.264 por hardware Media Foundation.\n");
@@ -277,13 +285,17 @@ int main(int argc, char* argv[]) {
     serverHud.Start();
 
     // Callbacks de telemetria de entrada para a HUD (Thread-Safe)
-    tcpServer.SetInputPacketCallback([&serverHud, vidWidth, vidHeight](const InputPacket& pkt) {
+    tcpServer.SetInputPacketCallback([&serverHud, &encoder, vidWidth, vidHeight](const InputPacket& pkt) {
         if (pkt.packetType == PACKET_TYPE_PEN) {
             int px = (int)(((double)pkt.x / 65535.0) * vidWidth);
             int py = (int)(((double)pkt.y / 65535.0) * vidHeight);
             bool contact = (pkt.flags & FLAG_PEN_CONTACT) != 0;
             bool hover = (pkt.flags & FLAG_PEN_HOVER) != 0;
             bool barrel = (pkt.flags & FLAG_PEN_BARREL_BUTTON) != 0;
+
+            // Suprime o cursor do mouse se a caneta estiver em hover ou toque na tela
+            encoder.SetPenHoverActive(hover || contact);
+
             serverHud.UpdatePenTelemetry(px, py, pkt.pressure, (float)pkt.tiltX, (float)pkt.tiltY, contact, hover, barrel);
         }
     });

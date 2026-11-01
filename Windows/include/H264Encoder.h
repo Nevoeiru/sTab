@@ -61,6 +61,9 @@ public:
     void SetPacketCallback(OnH264PacketCallback cb) { m_onPacketCb = cb; }
     bool IsInitialized() const { return m_initialized; }
 
+    void SetDisplayOrigin(int x, int y) { m_desktopX = x; m_desktopY = y; }
+    void SetPenHoverActive(bool active) { m_penHoverActive = active; }
+
 private:
     bool CreateEncoderMFT();
     bool ConfigureMediaTypes();
@@ -70,6 +73,9 @@ private:
     int m_height;
     int m_fps;
     int m_bitrateBps;
+    int m_desktopX;
+    int m_desktopY;
+    bool m_penHoverActive;
     bool m_initialized;
     bool m_forceKeyFrameNext;
 

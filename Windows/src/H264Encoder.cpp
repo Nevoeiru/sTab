@@ -15,6 +15,9 @@ H264Encoder::H264Encoder()
     , m_height(1080)
     , m_fps(90)
     , m_bitrateBps(35000000)
+    , m_desktopX(0)
+    , m_desktopY(0)
+    , m_penHoverActive(false)
     , m_initialized(false)
     , m_forceKeyFrameNext(false)
     , m_encoderMFT(NULL)
@@ -265,6 +268,72 @@ bool H264Encoder::EncodeFrame(ID3D11Device* pDevice, ID3D11DeviceContext* pConte
     }
 
     pContext->Unmap(m_cpuStagingTexture, 0);
+
+    // Consulta a posição do cursor do mouse do Windows
+    int cursorRelX = -1;
+    int cursorRelY = -1;
+    bool shouldDrawCursor = false;
+
+    if (!m_penHoverActive) {
+        CURSORINFO ci = {};
+        ci.cbSize = sizeof(CURSORINFO);
+        if (GetCursorInfo(&ci) && (ci.flags & CURSOR_SHOWING)) {
+            int cx = ci.ptScreenPos.x - m_desktopX;
+            int cy = ci.ptScreenPos.y - m_desktopY;
+            if (cx >= 0 && cx < m_width && cy >= 0 && cy < m_height) {
+                cursorRelX = cx;
+                cursorRelY = cy;
+                shouldDrawCursor = true;
+            }
+        }
+    }
+
+    // Desenha o cursor do mouse do Windows sobre o frame capturado se a caneta não estiver em hover
+    if (shouldDrawCursor) {
+        static const uint8_t s_cursorShape[18][12] = {
+            {1,0,0,0,0,0,0,0,0,0,0,0},
+            {1,1,0,0,0,0,0,0,0,0,0,0},
+            {1,2,1,0,0,0,0,0,0,0,0,0},
+            {1,2,2,1,0,0,0,0,0,0,0,0},
+            {1,2,2,2,1,0,0,0,0,0,0,0},
+            {1,2,2,2,2,1,0,0,0,0,0,0},
+            {1,2,2,2,2,2,1,0,0,0,0,0},
+            {1,2,2,2,2,2,2,1,0,0,0,0},
+            {1,2,2,2,2,2,2,2,1,0,0,0},
+            {1,2,2,2,2,2,2,2,2,1,0,0},
+            {1,2,2,2,2,2,1,1,1,1,1,0},
+            {1,2,2,1,2,2,1,0,0,0,0,0},
+            {1,2,1,0,1,2,2,1,0,0,0,0},
+            {1,1,0,0,1,2,2,1,0,0,0,0},
+            {1,0,0,0,0,1,2,2,1,0,0,0},
+            {0,0,0,0,0,1,2,2,1,0,0,0},
+            {0,0,0,0,0,0,1,1,0,0,0,0},
+            {0,0,0,0,0,0,0,0,0,0,0,0}
+        };
+
+        for (int cy = 0; cy < 18; ++cy) {
+            int py = cursorRelY + cy;
+            if (py < 0 || py >= m_height) continue;
+            for (int cx = 0; cx < 12; ++cx) {
+                int px = cursorRelX + cx;
+                if (px < 0 || px >= m_width) continue;
+
+                uint8_t pixelType = s_cursorShape[cy][cx];
+                if (pixelType == 0) continue; // Transparente
+
+                int yIndex = py * m_width + px;
+                if (pixelType == 1) {
+                    pY[yIndex] = 16;  // Borda preta
+                } else if (pixelType == 2) {
+                    pY[yIndex] = 235; // Preenchimento branco
+                }
+
+                int uvIndex = (py / 2) * m_width + (px & ~1);
+                pUV[uvIndex + 0] = 128; // U neutro
+                pUV[uvIndex + 1] = 128; // V neutro
+            }
+        }
+    }
 
     // Cria o Sample de Entrada do Media Foundation
     IMFSample* pInSample = NULL;

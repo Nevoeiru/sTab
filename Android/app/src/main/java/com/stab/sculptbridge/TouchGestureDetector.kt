@@ -5,31 +5,32 @@ import kotlin.math.abs
 import kotlin.math.hypot
 
 /**
- * Detector de gestos multitoque de dedo na tela (TOOL_TYPE_FINGER).
- * Traduz movimentos de 1 dedo (Orbit), 2 dedos (Pan/Zoom) e toques rápidos (Undo/Redo).
+ * Detector de gestos multitoque de dedo de alto desempenho (TOOL_TYPE_FINGER).
+ * Traduz com precisão cirúrgica:
+ * - 1 Dedo: Orbit / Rotação 3D (MMB no Blender)
+ * - 2 Dedos Movendo Juntos: Pan / Mover 3D (Shift + MMB no Blender)
+ * - 2 Dedos Afastando/Aproximando: Zoom suave na Viewport 3D (Mouse Wheel)
+ * - Toques rápidos (Taps): 2 Dedos = Undo (Ctrl+Z) | 3 Dedos = Redo (Ctrl+Shift+Z)
  */
 class TouchGestureDetector(
     private val onGesturePacket: (InputPacket) -> Unit
 ) {
     companion object {
-        private const val TAP_TIMEOUT_MS = 250L
-        private const val TAP_SLOP_PX = 30f
-        private const val ZOOM_SENSITIVITY = 4.0f
+        private const val TAP_TIMEOUT_MS = 240L
+        private const val TAP_SLOP_PX = 25f
+        private const val PINCH_THRESHOLD_PX = 12f // Limiar de notch do mouse wheel
     }
 
     private var activeGesture: Byte = Protocol.GESTURE_NONE
     private var lastX = 0f
     private var lastY = 0f
     private var lastSpan = 0f
+    private var accumulatedPinchDelta = 0f
 
     private var touchDownTime = 0L
-    private var touchDownPointers = 0
     private var maxPointersInGesture = 0
     private var hasMovedSignificantly = false
 
-    /**
-     * Processa eventos brutos de toque gerados exclusivamente por dedos.
-     */
     fun onTouchEvent(event: MotionEvent): Boolean {
         val pointerCount = event.pointerCount
         val action = event.actionMasked
@@ -37,9 +38,9 @@ class TouchGestureDetector(
         when (action) {
             MotionEvent.ACTION_DOWN -> {
                 touchDownTime = System.currentTimeMillis()
-                touchDownPointers = 1
                 maxPointersInGesture = 1
                 hasMovedSignificantly = false
+                accumulatedPinchDelta = 0f
 
                 lastX = event.x
                 lastY = event.y
@@ -51,51 +52,80 @@ class TouchGestureDetector(
                 if (pointerCount > maxPointersInGesture) {
                     maxPointersInGesture = pointerCount
                 }
+
+                // Ao apoiar o segundo dedo, encerra imediatamente rotação de 1 dedo anterior
+                if (activeGesture == Protocol.GESTURE_ORBIT_DRAG) {
+                    emitGesture(Protocol.GESTURE_ORBIT_DRAG, phase = 2, dx = 0, dy = 0)
+                    activeGesture = Protocol.GESTURE_NONE
+                }
+
                 if (pointerCount == 2) {
                     lastSpan = calculateSpan(event)
                     lastX = (event.getX(0) + event.getX(1)) / 2f
                     lastY = (event.getY(0) + event.getY(1)) / 2f
+                    accumulatedPinchDelta = 0f
                 }
                 return true
             }
 
             MotionEvent.ACTION_MOVE -> {
-                val dx = (event.x - lastX)
-                val dy = (event.y - lastY)
+                if (pointerCount == 1) {
+                    val dx = event.x - lastX
+                    val dy = event.y - lastY
 
-                if (!hasMovedSignificantly && (abs(dx) > TAP_SLOP_PX || abs(dy) > TAP_SLOP_PX)) {
-                    hasMovedSignificantly = true
-                }
-
-                if (pointerCount == 1 && hasMovedSignificantly) {
-                    // 1 Dedo = Orbit 3D (MMB no Blender)
-                    if (activeGesture != Protocol.GESTURE_ORBIT_DRAG) {
-                        emitGesture(Protocol.GESTURE_ORBIT_DRAG, phase = 0, dx = 0, dy = 0)
-                        activeGesture = Protocol.GESTURE_ORBIT_DRAG
+                    if (!hasMovedSignificantly && (abs(dx) > TAP_SLOP_PX || abs(dy) > TAP_SLOP_PX)) {
+                        hasMovedSignificantly = true
                     }
-                    emitGesture(Protocol.GESTURE_ORBIT_DRAG, phase = 1, dx = dx.toInt(), dy = dy.toInt())
-                    lastX = event.x
-                    lastY = event.y
 
-                } else if (pointerCount == 2 && hasMovedSignificantly) {
+                    if (hasMovedSignificantly && maxPointersInGesture == 1) {
+                        // 1 Dedo = Orbit 3D (MMB)
+                        if (activeGesture != Protocol.GESTURE_ORBIT_DRAG) {
+                            emitGesture(Protocol.GESTURE_ORBIT_DRAG, phase = 0, dx = 0, dy = 0)
+                            activeGesture = Protocol.GESTURE_ORBIT_DRAG
+                        }
+                        emitGesture(Protocol.GESTURE_ORBIT_DRAG, phase = 1, dx = dx.toInt(), dy = dy.toInt())
+                        lastX = event.x
+                        lastY = event.y
+                    }
+
+                } else if (pointerCount == 2) {
                     val currentSpan = calculateSpan(event)
                     val spanDelta = currentSpan - lastSpan
+
                     val midX = (event.getX(0) + event.getX(1)) / 2f
                     val midY = (event.getY(0) + event.getY(1)) / 2f
                     val midDx = midX - lastX
                     val midDy = midY - lastY
 
-                    if (abs(spanDelta) > 15f) {
-                        // Gesto de Pinça = Zoom na Viewport
-                        val wheelDelta = (spanDelta * ZOOM_SENSITIVITY).toInt()
-                        emitGesture(Protocol.GESTURE_PINCH_ZOOM, phase = 1, dx = 0, dy = wheelDelta)
-                    } else if (abs(midDx) > 2f || abs(midDy) > 2f) {
-                        // 2 Dedos Paralelos = Pan 3D (Shift + MMB)
-                        if (activeGesture != Protocol.GESTURE_PAN_DRAG) {
-                            emitGesture(Protocol.GESTURE_PAN_DRAG, phase = 0, dx = 0, dy = 0)
-                            activeGesture = Protocol.GESTURE_PAN_DRAG
+                    val spanChangeAbs = abs(spanDelta)
+                    val moveChangeAbs = hypot(midDx.toDouble(), midDy.toDouble()).toFloat()
+
+                    if (!hasMovedSignificantly && (spanChangeAbs > 10f || moveChangeAbs > TAP_SLOP_PX)) {
+                        hasMovedSignificantly = true
+                    }
+
+                    if (hasMovedSignificantly) {
+                        accumulatedPinchDelta += spanDelta
+
+                        // 1. Zoom na Viewport se a variação de distância for dominante
+                        if (abs(accumulatedPinchDelta) >= PINCH_THRESHOLD_PX) {
+                            if (activeGesture == Protocol.GESTURE_PAN_DRAG) {
+                                emitGesture(Protocol.GESTURE_PAN_DRAG, phase = 2, dx = 0, dy = 0)
+                                activeGesture = Protocol.GESTURE_NONE
+                            }
+                            val wheelNotch = if (accumulatedPinchDelta > 0) 120 else -120
+                            emitGesture(Protocol.GESTURE_PINCH_ZOOM, phase = 1, dx = 0, dy = wheelNotch)
+                            accumulatedPinchDelta = 0f
                         }
-                        emitGesture(Protocol.GESTURE_PAN_DRAG, phase = 1, dx = midDx.toInt(), dy = midDy.toInt())
+
+                        // 2. Pan 3D (Shift + MMB) se o deslocamento do ponto médio for dominante
+                        if (moveChangeAbs > 2.5f) {
+                            if (activeGesture != Protocol.GESTURE_PAN_DRAG) {
+                                emitGesture(Protocol.GESTURE_PAN_DRAG, phase = 0, dx = 0, dy = 0)
+                                activeGesture = Protocol.GESTURE_PAN_DRAG
+                            }
+                            emitGesture(Protocol.GESTURE_PAN_DRAG, phase = 1, dx = midDx.toInt(), dy = midDy.toInt())
+                        }
                     }
 
                     lastSpan = currentSpan
@@ -105,25 +135,30 @@ class TouchGestureDetector(
                 return true
             }
 
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
-                if (action == MotionEvent.ACTION_UP) {
-                    val duration = System.currentTimeMillis() - touchDownTime
-                    if (!hasMovedSignificantly && duration < TAP_TIMEOUT_MS) {
-                        // Toques rápidos (Taps) para Undo / Redo
-                        if (maxPointersInGesture == 2) {
-                            emitGesture(Protocol.GESTURE_TAP_TWO_FINGERS, phase = 0, dx = 0, dy = 0)
-                        } else if (maxPointersInGesture >= 3) {
-                            emitGesture(Protocol.GESTURE_TAP_THREE_FINGERS, phase = 0, dx = 0, dy = 0)
-                        }
-                    }
-
-                    // Encerra qualquer gesto contínuo ativo
-                    if (activeGesture != Protocol.GESTURE_NONE) {
-                        emitGesture(activeGesture, phase = 2, dx = 0, dy = 0)
-                        activeGesture = Protocol.GESTURE_NONE
-                    }
-                    emitGesture(Protocol.GESTURE_STATE_END, phase = 0, dx = 0, dy = 0)
+            MotionEvent.ACTION_POINTER_UP -> {
+                // Ao levantar um dos dedos do gesto multitoque, finaliza Pan imediatamente
+                if (activeGesture == Protocol.GESTURE_PAN_DRAG) {
+                    emitGesture(Protocol.GESTURE_PAN_DRAG, phase = 2, dx = 0, dy = 0)
+                    activeGesture = Protocol.GESTURE_NONE
                 }
+                // Previne que o dedo remanescente engate um Orbit indesejado
+                maxPointersInGesture = maxOf(maxPointersInGesture, pointerCount)
+                hasMovedSignificantly = true
+                return true
+            }
+
+            MotionEvent.ACTION_UP -> {
+                val duration = System.currentTimeMillis() - touchDownTime
+                if (!hasMovedSignificantly && duration < TAP_TIMEOUT_MS) {
+                    // Toques rápidos (Taps) para Undo / Redo
+                    if (maxPointersInGesture == 2) {
+                        emitGesture(Protocol.GESTURE_TAP_TWO_FINGERS, phase = 0, dx = 0, dy = 0)
+                    } else if (maxPointersInGesture >= 3) {
+                        emitGesture(Protocol.GESTURE_TAP_THREE_FINGERS, phase = 0, dx = 0, dy = 0)
+                    }
+                }
+
+                reset()
                 return true
             }
 
@@ -142,6 +177,7 @@ class TouchGestureDetector(
         }
         emitGesture(Protocol.GESTURE_STATE_END, phase = 0, dx = 0, dy = 0)
         hasMovedSignificantly = false
+        accumulatedPinchDelta = 0f
     }
 
     private fun calculateSpan(event: MotionEvent): Float {
@@ -166,4 +202,3 @@ class TouchGestureDetector(
         onGesturePacket(packet)
     }
 }
-

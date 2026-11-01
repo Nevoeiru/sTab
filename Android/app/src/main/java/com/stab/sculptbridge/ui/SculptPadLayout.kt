@@ -22,9 +22,12 @@ class SculptPadLayout(
     private val onHandSwapped: () -> Unit
 ) : LinearLayout(context) {
 
+    var onMinimizeClicked: (() -> Unit)? = null
+
     private var isLeftEdge = true
     private var radiusSubmodal: SliderSubmodal? = null
     private var strengthSubmodal: SliderSubmodal? = null
+    private val tooltipView = RailTooltipView(context)
 
     private lateinit var radiusButton: CompactRailButton
     private lateinit var strengthButton: CompactRailButton
@@ -94,12 +97,34 @@ class SculptPadLayout(
             }
         }
 
+        fun attachTooltip(btn: CompactRailButton, text: String) {
+            btn.tooltipText = text
+            btn.onHoverChanged = { isHovering, b ->
+                if (isHovering) {
+                    tooltipView.showTooltip(b, text, isLeftEdge)
+                } else {
+                    tooltipView.hideTooltip()
+                }
+            }
+        }
+
+        // 0. Botão Minimizar Barra Lateral (Maximizar Área 3D)
+        val minimizeBtn = CompactRailButton(context).apply {
+            layoutParams = createLayoutParams()
+            activeColorHex = "#00E5FF"
+            setText("\u00AB", "#00E5FF") // Ícone lineart '«'
+            onActionClick = { onMinimizeClicked?.invoke() }
+        }
+        attachTooltip(minimizeBtn, "Minimizar Barra (Maximizar Tela)")
+        addView(minimizeBtn)
+
         // 1. Alternar lado da barra (Esquerda / Direita)
         val swapHandBtn = CompactRailButton(context).apply {
             layoutParams = createLayoutParams()
             setIconResource(R.drawable.ic_hand_switch)
             onActionClick = { onHandSwapped() }
         }
+        attachTooltip(swapHandBtn, "Alternar Lado da Barra")
         addView(swapHandBtn)
 
         addView(createDivider())
@@ -113,6 +138,7 @@ class SculptPadLayout(
                 radiusSubmodal?.show(this, isLeftEdge)
             }
         }
+        attachTooltip(radiusButton, "Raio do Pincel")
         addView(radiusButton)
 
         // 3. Força do Pincel (Abre submodal)
@@ -124,6 +150,7 @@ class SculptPadLayout(
                 strengthSubmodal?.show(this, isLeftEdge)
             }
         }
+        attachTooltip(strengthButton, "Força do Pincel")
         addView(strengthButton)
 
         addView(createDivider())
@@ -137,6 +164,7 @@ class SculptPadLayout(
             onHoldDown = { onActionEmitted(Protocol.SCULPTPAD_HOLD_SHIFT_DOWN) }
             onHoldUp = { onActionEmitted(Protocol.SCULPTPAD_HOLD_SHIFT_UP) }
         }
+        attachTooltip(shiftBtn, "Suavizar / Smooth (Shift)")
         addView(shiftBtn)
 
         // 5. Modificador CTRL (Invert Brush Hold)
@@ -148,6 +176,7 @@ class SculptPadLayout(
             onHoldDown = { onActionEmitted(Protocol.SCULPTPAD_HOLD_CTRL_DOWN) }
             onHoldUp = { onActionEmitted(Protocol.SCULPTPAD_HOLD_CTRL_UP) }
         }
+        attachTooltip(ctrlBtn, "Inverter / Subtrair (Ctrl)")
         addView(ctrlBtn)
 
         // 6. Modificador ALT (Mask / Navigation Hold)
@@ -159,6 +188,7 @@ class SculptPadLayout(
             onHoldDown = { onActionEmitted(Protocol.SCULPTPAD_HOLD_ALT_DOWN) }
             onHoldUp = { onActionEmitted(Protocol.SCULPTPAD_HOLD_ALT_UP) }
         }
+        attachTooltip(altBtn, "Máscara / Contexto (Alt)")
         addView(altBtn)
 
         // 7. Ação Rápida Remesh (Ctrl+R no Blender)
@@ -168,6 +198,7 @@ class SculptPadLayout(
             setIconResource(R.drawable.ic_remesh)
             onActionClick = { onActionEmitted(Protocol.SCULPTPAD_TRIGGER_REMESH) }
         }
+        attachTooltip(remeshBtn, "Remesh Automático (Ctrl+R)")
         addView(remeshBtn)
 
         addView(createDivider())
@@ -179,6 +210,7 @@ class SculptPadLayout(
             setIconResource(R.drawable.ic_undo)
             onActionClick = { onActionEmitted(Protocol.GESTURE_TAP_TWO_FINGERS) }
         }
+        attachTooltip(undoBtn, "Desfazer (Ctrl+Z)")
         addView(undoBtn)
 
         // 9. Refazer (Redo / Ctrl+Shift+Z)
@@ -188,6 +220,7 @@ class SculptPadLayout(
             setIconResource(R.drawable.ic_redo)
             onActionClick = { onActionEmitted(Protocol.GESTURE_TAP_THREE_FINGERS) }
         }
+        attachTooltip(redoBtn, "Refazer (Ctrl+Shift+Z)")
         addView(redoBtn)
     }
 

@@ -1,5 +1,6 @@
 #include <windows.h>
 #include <shlwapi.h>
+#include <conio.h>
 #include <stdio.h>
 #include <string>
 
@@ -7,12 +8,12 @@
  * @brief Launcher integrado sTab (SculptBridge).
  * Configura os túneis ADB USB reversos e inicializa o servidor de baixa latência.
  */
-int main() {
+int main(int argc, char* argv[]) {
     SetConsoleTitleA("sTab (SculptBridge) - Launcher Galaxy Tab S9 FE+");
 
     printf("====================================================================\n");
     printf("   sTab (SculptBridge) - Launcher Integrado para Blender 3D        \n");
-    printf("   Galaxy Tab S9 FE+ como Mesa Digitalizadora 90Hz de Alta Precisao\n");
+    printf("   Galaxy Tab S9 FE+ como Mesa Digitalizadora 60Hz de Alta Precisao\n");
     printf("====================================================================\n\n");
 
     char exePath[MAX_PATH];
@@ -77,8 +78,57 @@ int main() {
         printf("  Certifique-se de que o tablet esta conectado via cabo USB com Depuracao USB ativa.\n\n");
     }
 
-    // Garante que o Windows esteja em modo de Area de Trabalho Estendida (/extend)
-    system("displayswitch.exe /extend >nul 2>&1");
+    bool isMirror = false;
+    bool modeChosen = false;
+
+    for (int i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "--mirror") == 0 || strcmp(argv[i], "-m") == 0) {
+            isMirror = true;
+            modeChosen = true;
+        } else if (strcmp(argv[i], "--extend") == 0 || strcmp(argv[i], "-e") == 0) {
+            isMirror = false;
+            modeChosen = true;
+        }
+    }
+
+    if (!modeChosen) {
+        printf("Escolha o Modo de Exibicao:\n");
+        printf("  [1] Modo Estendido (Tela independente e exclusiva para o Blender)\n");
+        printf("  [2] Modo Espelhado (Duplica a tela do PC no tablet sem distorcoes)\n");
+        printf("  Selecione (ou aguarde 3s para Modo Estendido padrao): ");
+        fflush(stdout);
+
+        for (int t = 0; t < 30; ++t) {
+            if (_kbhit()) {
+                int ch = _getch();
+                if (ch == '2' || ch == 'm' || ch == 'M') {
+                    isMirror = true;
+                    modeChosen = true;
+                    printf("2 (Espelhado)\n\n");
+                    break;
+                } else if (ch == '1' || ch == 'e' || ch == 'E') {
+                    isMirror = false;
+                    modeChosen = true;
+                    printf("1 (Estendido)\n\n");
+                    break;
+                }
+            }
+            Sleep(100);
+        }
+        if (!modeChosen) {
+            printf("1 (Padrao: Estendido)\n\n");
+        }
+    }
+
+    if (isMirror) {
+        system("displayswitch.exe /clone >nul 2>&1");
+        serverPath += " --mirror";
+        printf("  [DISPLAY] Modo Espelhado ativado (/clone).\n\n");
+    } else {
+        system("displayswitch.exe /extend >nul 2>&1");
+        serverPath += " --extend";
+        printf("  [DISPLAY] Modo Estendido ativado (/extend).\n\n");
+    }
 
     // Checa se ha monitor secundario estendido ativo
     bool hasExtendedDisplay = false;
@@ -95,7 +145,7 @@ int main() {
             }
         }
     }
-    if (!hasExtendedDisplay) {
+    if (!hasExtendedDisplay && !isMirror) {
         printf("  [DISPLAY] Monitor estendido nao encontrado. Ativando modo espelhado padrao.\n\n");
     } else {
         printf("\n");

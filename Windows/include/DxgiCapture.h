@@ -18,10 +18,11 @@ public:
     ~DxgiCapture();
 
     /**
-     * @brief Inicializa o dispositivo Direct3D 11 e a duplicação de saída do monitor primário.
+     * @brief Inicializa o dispositivo Direct3D 11 e a duplicação de tela (Estendido ou Espelhado).
+     * @param forceMirror Se true, força a captura do monitor primário (espelhamento).
      * @return true se a duplicação for inicializada com sucesso.
      */
-    bool Initialize();
+    bool Initialize(bool forceMirror = false);
 
     /**
      * @brief Libera os recursos do DirectX e a duplicação de tela.
@@ -53,7 +54,7 @@ public:
 
 private:
     bool CreateD3DDevice(IDXGIAdapter* adapter = NULL);
-    bool SetupDuplication();
+    bool SetupDuplication(bool forceMirror = false);
 
     ID3D11Device*           m_d3dDevice;
     ID3D11DeviceContext*    m_d3dContext;
@@ -68,6 +69,7 @@ private:
     bool m_initialized;
     bool m_hasAcquiredFrame;
     bool m_isUsingVirtualDisplay;
+    bool m_forceMirror;
 };
 
 #endif // STAB_DXGI_CAPTURE_H

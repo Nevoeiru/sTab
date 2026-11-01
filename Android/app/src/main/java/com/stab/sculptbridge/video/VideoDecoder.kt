@@ -26,6 +26,7 @@ class VideoDecoder(
     private var codec: MediaCodec? = null
     private var isConfigured = false
     private var consecutiveErrors = 0
+    var onResolutionChanged: ((Int, Int) -> Unit)? = null
 
     fun start() {
         if (isConfigured) return
@@ -108,7 +109,10 @@ class VideoDecoder(
                 }
                 outIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
                     val newFormat = activeCodec.outputFormat
-                    Log.i(TAG, "Formato de saida alterado: $newFormat")
+                    val w = try { newFormat.getInteger(MediaFormat.KEY_WIDTH) } catch (_: Exception) { width }
+                    val h = try { newFormat.getInteger(MediaFormat.KEY_HEIGHT) } catch (_: Exception) { height }
+                    Log.i(TAG, "Formato de saida alterado: ${w}x${h}")
+                    onResolutionChanged?.invoke(w, h)
                 }
                 else -> {
                     // Sem quadros pendentes prontos neste instante

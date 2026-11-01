@@ -19,6 +19,7 @@ class SculptTouchDispatcher(
     }
 
     private var isStylusInProximity = false
+    var onHoverStateChanged: ((Boolean) -> Unit)? = null
 
     fun updateDimensions(width: Int, height: Int) {
         stylusProcessor.viewWidth = width
@@ -55,11 +56,15 @@ class SculptTouchDispatcher(
             when (event.actionMasked) {
                 MotionEvent.ACTION_HOVER_ENTER,
                 MotionEvent.ACTION_HOVER_MOVE -> {
+                    if (!isStylusInProximity) {
+                        onHoverStateChanged?.invoke(true)
+                    }
                     isStylusInProximity = true
                     gestureDetector.reset()
                 }
                 MotionEvent.ACTION_HOVER_EXIT -> {
                     isStylusInProximity = false
+                    onHoverStateChanged?.invoke(false)
                 }
             }
             return stylusProcessor.processHoverEvent(event)
