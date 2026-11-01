@@ -53,7 +53,43 @@ O monitor físico do PC normalmente possui proporção **16:9** (ex.: 1920×1080
 
 ---
 
-## 2. Arquitetura Técnica Detalhada
+## 2. Ecossistema de Desenvolvimento Local e Estrutura do Workspace (Antigravity IDE)
+
+Para garantir autonomia completa de desenvolvimento diretamente dentro do **Antigravity** (sem necessidade de instalar ou abrir IDEs pesados externos como Visual Studio ou Android Studio completo), o repositório é organizado em **3 diretórios mestres**:
+
+```
+j:\sTab/
+├── dependencias/               <- Ferramentas portáteis de build e empacotamento (ignorado no git)
+│   ├── platform-tools/         <- Google ADB oficial (v37.0.1) para túnel USB e deploy de APK
+│   ├── w64devkit/              <- Compilador C++ portátil (g++ 16.2.0, make 4.4.1, headers Win32)
+│   ├── jdk-17/                 <- OpenJDK 17 Temurin portátil (javac.exe, java.exe)
+│   ├── android-sdk/            <- Android Command-Line Tools (cmdline-tools, sdkmanager)
+│   ├── setup_env.ps1           <- Ativação de ambiente portátil para PowerShell
+│   └── setup_env.bat           <- Ativação de ambiente portátil para CMD
+│
+├── Windows/                    <- Código-fonte C++ nativo do Servidor de Desktop (gera sTab_server.exe)
+│   ├── include/                <- Protocol.h, headers de injeção e rede
+│   ├── src/                    <- PointerInjector.cpp, GestureTranslator.cpp, TcpServer.cpp, Main.cpp
+│   ├── bin/                    <- Destino do executável final compilado (sTab_server.exe)
+│   └── Makefile                <- Script de compilação modular para g++
+│
+├── Android/                    <- Código-fonte Kotlin nativo do Tablet (gera sTab.apk)
+│   ├── app/src/main/java/      <- StylusMotionProcessor, TouchGestureDetector, OneUiShield, SculptPad
+│   ├── app/src/main/res/       <- Recursos visuais e layouts
+│   └── app/src/main/           <- AndroidManifest.xml com trava em 90Hz fullscreen
+│
+├── planejamento_...md          <- Documento de referência arquitetural
+└── .gitignore                  <- Protege binários e ferramentas pesadas de entrar no versionamento
+```
+
+### 2.1. Princípios da Estrutura
+1. **Zero Privilégios de Administrador:** Nenhuma ferramenta mexe no registro do Windows ou exige UAC. Tudo roda localmente a partir de `dependencias/`.
+2. **Modularidade Estrita:** Cada responsabilidade fica em seu próprio arquivo isolado (< 500 linhas), com compilação independente.
+3. **Compilação em 1 Comando:** O executável do Windows é gerado com um simples `make` ou `./build.bat`, e o APK do Android é empacotado e instalado no tablet via linha de comando no terminal do Antigravity.
+
+---
+
+## 3. Arquitetura Técnica Detalhada
 
 ```
 +-----------------------------------------------------------------------------------+
@@ -111,7 +147,7 @@ O monitor físico do PC normalmente possui proporção **16:9** (ex.: 1920×1080
 
 ---
 
-### 2.1. O Protocolo Binário de Entrada (16 Bytes) e Canal de Controle
+### 3.1. O Protocolo Binário de Entrada (16 Bytes) e Canal de Controle
 
 Cada evento de entrada gerado no tablet é transmitido em uma `struct` binária de **16 bytes fixos** (`#pragma pack(push, 1)`), mantendo o consumo de banda abaixo de 0,1% da capacidade do USB 2.0:
 
@@ -135,7 +171,7 @@ Cada evento de entrada gerado no tablet é transmitido em uma `struct` binária 
 
 ---
 
-### 2.2. Blindagem do Sistema Android: Bloqueio do Air Command e Gestos da One UI
+### 3.2. Blindagem do Sistema Android: Bloqueio do Air Command e Gestos da One UI
 
 No Galaxy Tab S9 FE+, dois comportamentos nativos da Samsung interferem na escultura profissional se não forem tratados explicitamente:
 
@@ -148,7 +184,7 @@ No Galaxy Tab S9 FE+, dois comportamentos nativos da Samsung interferem na escul
 
 ---
 
-### 2.3. Resiliência de Vídeo: Canal de Recuperação Instantânea `REQUEST_IDR`
+### 3.3. Resiliência de Vídeo: Canal de Recuperação Instantânea `REQUEST_IDR`
 
 Em transmissões de vídeo via USB 2.0, operações de alto custo de CPU no PC (como executar um *Voxel Remesh* pesado ou aplicar um modificador multirresolução) podem atrasar momentaneamente o envio de pacotes. Em fluxos H.264 sem frames B, a perda de um único frame diferencial (P-Frame) provocaria artefatos visuais ou congelamento até o próximo frame-chave (GOP).
 * **Solução:** O decodificador `MediaCodec` do Android monitora a continuidade dos timestamps de exibição. Se detectar pacote corrompido ou descarte de frames, envia imediatamente um pacote de 1 byte `REQUEST_IDR` pelo canal de socket reverso.
@@ -156,9 +192,9 @@ Em transmissões de vídeo via USB 2.0, operações de alto custo de CPU no PC (
 
 ---
 
-## 3. Design de UX e Ergonomia de Escultura
+## 4. Design de UX e Ergonomia de Escultura
 
-### 3.1. Layout Ergonômico de Duas Mãos
+### 4.1. Layout Ergonômico de Duas Mãos
 
 A disposição foi concebida para que o usuário trabalhe exatamente como em uma mesa profissional com teclado, porém de forma 100% tátil e portátil:
 * **Mão Direita (S-Pen):** Dedicada exclusivamente à precisão do traço, pressão, inclinação e acionamento do menu de contexto de pincel via botão lateral (RMB).
@@ -167,7 +203,7 @@ A disposição foi concebida para que o usuário trabalhe exatamente como em uma
 
 ---
 
-### 3.2. Mapeamento do Botão da S-Pen: Botão Direito do Mouse (RMB)
+### 4.2. Mapeamento do Botão da S-Pen: Botão Direito do Mouse (RMB)
 
 No Blender Sculpt Mode, o **Botão Direito do Mouse (RMB)** é um dos comandos mais poderosos: ele aciona instantaneamente o menu de contexto do pincel ativo (*Brush Context Menu* / *Sculpt Quick Menu*), permitindo alterar raio, força, autosmooth e formato da curva diretamente sob a ponta da caneta.
 
@@ -178,7 +214,7 @@ No Blender Sculpt Mode, o **Botão Direito do Mouse (RMB)** é um dos comandos m
 
 ---
 
-### 3.3. Ações de Dedo Nativas na Tela (Navegação Touch 3D)
+### 4.3. Ações de Dedo Nativas na Tela (Navegação Touch 3D)
 
 O digitalizador do Galaxy Tab S9 FE+ distingue com precisão de hardware o contato da caneta (`TOOL_TYPE_STYLUS`) do contato dos dedos (`TOOL_TYPE_FINGER`). Aproveitamos essa distinção para criar uma navegação de câmera 3D natural:
 
@@ -194,7 +230,7 @@ O digitalizador do Galaxy Tab S9 FE+ distingue com precisão de hardware o conta
 
 ---
 
-### 3.4. Anatomia da Barra Lateral "SculptPad" (Mão Esquerda)
+### 4.4. Anatomia da Barra Lateral "SculptPad" (Mão Esquerda)
 
 Localizada na faixa de folga de resolução (160–180 px de largura):
 1. **Botões de Retenção Momentânea (*Hold-to-Modify*):**
@@ -212,11 +248,11 @@ Localizada na faixa de folga de resolução (160–180 px de largura):
 
 ---
 
-## 4. Análise Técnica: É Necessário um Add-on para o Blender?
+## 5. Análise Técnica: É Necessário um Add-on para o Blender?
 
 Uma dúvida central de arquitetura: **Precisamos desenvolver um add-on em Python para o Blender rodar esse ecossistema, ou do jeito que está já funciona perfeitamente?**
 
-### 4.1. Diagnóstico: O Sistema Funciona 100% de Forma Autônoma (Sem Add-on)
+### 5.1. Diagnóstico: O Sistema Funciona 100% de Forma Autônoma (Sem Add-on)
 A resposta direta é: **Para o funcionamento de escultura, sensibilidade de pressão, inclinação e navegação de câmera, NENHUM add-on é estritamente obrigatório.**
 
 * **Por que funciona sem add-on?**
@@ -225,7 +261,7 @@ A resposta direta é: **Para o funcionamento de escultura, sensibilidade de pres
 
 ---
 
-### 4.2. Onde um Add-on Leve Agrega Valor Real (Acelerador Opcional de Workflow)
+### 5.2. Onde um Add-on Leve Agrega Valor Real (Acelerador Opcional de Workflow)
 Embora não seja obrigatório para o core do sistema, um **Add-on leve em Python (`sTab Companion`)** traz vantagens práticas consideráveis se implementado como um utilitário complementar:
 
 1. **Configuração de 1 Clique (*Zero Friction Setup*):**
@@ -238,50 +274,51 @@ Embora não seja obrigatório para o core do sistema, um **Add-on leve em Python
 
 ---
 
-### 4.3. Veredito Arquitetural: Estratégia Híbrida Desacoplada
+### 5.3. Veredito Arquitetural: Estratégia Híbrida Desacoplada
 Adotaremos a **estratégia híbrida desacoplada**:
 * **O Núcleo (Etapas 1 a 4) é 100% autônomo:** Você pode abrir qualquer versão do Blender (4.0, 4.2, 5.0), ou até outros softwares como ZBrush, Substance 3D Painter ou Photoshop, e a S-Pen com pressão, botão direito (RMB), SculptPad e navegação por toque funcionarão imediatamente sem depender de nenhum plugin instalado no software hospedeiro.
 * **O Add-on (Etapa 5) entra como um módulo facilitador opcional:** Um arquivo Python simples (`sTab_blender_companion.py`) que configura o ambiente em 1 clique e habilita a telemetria opcional para quem deseja a experiência mais refinada possível.
 
 ---
 
-## 5. Planejamento de Implementação em 5 Etapas Modulares (Sprints)
+## 6. Planejamento de Implementação em 5 Etapas Modulares (Sprints)
 
-O projeto é estruturado em **5 etapas modulares**, garantindo que cada fase gere código conciso, testável individualmente e dentro dos padrões de engenharia:
+O projeto é estruturado em **5 etapas modulares**, garantindo que cada fase gere código conciso, testável individualmente e utilizando os compiladores portáteis configurados em `dependencias/`:
 
 ---
 
 ### Etapa 1: Servidor Windows — Motor de Injeção S-Pen (Windows Ink) + Navegação e Câmera
 * **Objetivo:** Criar o servidor em C++ nativo (Win32) que recebe os pacotes de 16 bytes via túnel USB (ADB), injeta a S-Pen via Windows Ink com pressão/tilt, injeta o botão da caneta como RMB e traduz os gestos touch de dedo em navegação 3D (`MMB`, `Shift+MMB`, `Ctrl+MMB`).
-* **Módulos a Desenvolver:**
-  * `Protocol.h`: Definição binária compacta dos pacotes de entrada (`0x01` a `0x04`) e flags.
-  * `PointerInjector.h / .cpp`: Inicialização da API nativa `CreateSyntheticPointerDevice(PT_PEN)` com suporte a pressão (0-4096), inclinação X/Y, hover, contato e injeção do botão como **Right Mouse Button (`RMB`)**.
-  * `GestureTranslator.h / .cpp`: Mapeamento de gestos touch em `SendInput` para rotação de câmera (`MMB`), pan e zoom suave.
-  * `TcpServer.h / .cpp`: Servidor Winsock não-bloqueante escutando na porta `27183` com `TCP_NODELAY`.
-  * `setup_usb_tunnel.bat`: Script de inicialização automática do túnel `adb reverse tcp:27183 tcp:27183`.
-* **Resultado:** Servidor compilável com MSVC ou MinGW sem bibliotecas externas pesadas.
+* **Módulos a Desenvolver em `Windows/`:**
+  * `Windows/include/Protocol.h`: Definição binária compacta dos pacotes de entrada (`0x01` a `0x04`) e flags.
+  * `Windows/src/PointerInjector.cpp`: Inicialização da API nativa `CreateSyntheticPointerDevice(PT_PEN)` com suporte a pressão (0-4096), inclinação X/Y, hover, contato e injeção do botão como **Right Mouse Button (`RMB`)**.
+  * `Windows/src/GestureTranslator.cpp`: Mapeamento de gestos touch em `SendInput` para rotação de câmera (`MMB`), pan e zoom suave.
+  * `Windows/src/TcpServer.cpp`: Servidor Winsock não-bloqueante escutando na porta `27183` com `TCP_NODELAY`.
+  * `Windows/src/Main.cpp`: Inicialização e loop principal com tratamento de sinais.
+  * `Windows/Makefile` e `Windows/build.bat`: Script de compilação chamando `dependencias/w64devkit/bin/g++.exe`.
+* **Resultado:** Executável portátil `Windows/bin/sTab_server.exe` compilado e pronto para teste.
 
 ---
 
 ### Etapa 2: Cliente Android — Digitalizador S-Pen 240Hz, Gestos Touch e Blindagem One UI
 * **Objetivo:** Desenvolver o núcleo Android em Kotlin com amostragem de alta frequência da S-Pen, gestos de dedo na tela para controle de câmera, bloqueio do Air Command e neutralização dos gestos de borda da Samsung.
-* **Módulos a Desenvolver:**
-  * `AndroidManifest.xml`: Configurações de tela cheia imersiva a 90Hz e landscape travado.
-  * `UsbSocketClient.kt`: Gerenciador de conexão persistente com o PC via socket local `127.0.0.1:27183` com fila de alta prioridade.
-  * `OneUiShield.kt`: Módulo de proteção do sistema que aplica `setSystemGestureExclusionRects` e consome os eventos físicos do botão da S-Pen (`BUTTON_STYLUS_PRIMARY`), impedindo a abertura do menu Air Command da Samsung.
-  * `TouchGestureDetector.kt`: Processador de gestos de dedo na viewport (`TOOL_TYPE_FINGER`), identificando 1 dedo (Orbit), 2 dedos (Pan), pinça (Zoom) e toques de 2/3 dedos (Undo/Redo).
-  * `StylusMotionProcessor.kt`: Leitor de sub-frames do digitalizador Wacom (`event.historySize`), conversão de coordenadas e cálculo de `tiltX`/`tiltY` a partir dos ângulos de orientação do Android.
-* **Resultado:** Conexão funcional entre tablet e PC, permitindo esculpir no Blender com pressão, tilt, botão direito e girar a câmera usando os dedos na tela.
+* **Módulos a Desenvolver em `Android/`:**
+  * `Android/app/src/main/AndroidManifest.xml`: Configurações de tela cheia imersiva a 90Hz e landscape travado.
+  * `Android/app/src/main/java/com/stab/sculptbridge/UsbSocketClient.kt`: Conexão persistente com o PC via socket local `127.0.0.1:27183` com fila de alta prioridade.
+  * `Android/app/src/main/java/com/stab/sculptbridge/OneUiShield.kt`: Aplicação de `setSystemGestureExclusionRects` e consumo dos eventos do botão da S-Pen (`BUTTON_STYLUS_PRIMARY`), impedindo a abertura do Air Command da Samsung.
+  * `Android/app/src/main/java/com/stab/sculptbridge/TouchGestureDetector.kt`: Processador de gestos de dedo (`TOOL_TYPE_FINGER`), identificando 1 dedo (Orbit), 2 dedos (Pan), pinça (Zoom) e toques rápidos de 2/3 dedos (Undo/Redo).
+  * `Android/app/src/main/java/com/stab/sculptbridge/StylusMotionProcessor.kt`: Leitor de sub-frames do digitalizador Wacom (`event.historySize`), conversão de coordenadas e cálculo de `tiltX`/`tiltY`.
+* **Resultado:** Comunicação ativa entre tablet e PC, permitindo esculpir no Blender com pressão, tilt, botão direito e rotação de câmera com os dedos.
 
 ---
 
 ### Etapa 3: Interface Android — Barra Lateral "SculptPad" e Modificadores
 * **Objetivo:** Construir a interface visual tátil para o polegar esquerdo, eliminando a dependência do teclado físico.
-* **Módulos a Desenvolver:**
-  * `SculptPadLayout.kt`: Painel lateral tátil posicionado na margem excedente de proporção da tela.
-  * `HoldModifierButton.kt`: Componente modular para botões momentâneos (`Shift`, `Ctrl`, `Shift+Ctrl`, `Alt`) com multitouch independente.
-  * `TouchSliderView.kt`: Controle deslizante vertical para tamanho de pincel (`F`) e força (`Shift+F`), desenhando visualização dinâmica do diâmetro na tela.
-  * `QuickActionButton.kt`: Botões de disparo instantâneo para *Voxel Remesh*, seleção de subtool (`Alt+Q`), Undo e alternância Destro/Canhoto.
+* **Módulos a Desenvolver em `Android/`:**
+  * `Android/app/src/main/java/com/stab/sculptbridge/ui/SculptPadLayout.kt`: Painel lateral tátil posicionado na margem excedente de proporção da tela.
+  * `Android/app/src/main/java/com/stab/sculptbridge/ui/HoldModifierButton.kt`: Botões momentâneos (`Shift`, `Ctrl`, `Shift+Ctrl`, `Alt`) com multitouch independente.
+  * `Android/app/src/main/java/com/stab/sculptbridge/ui/TouchSliderView.kt`: Controle deslizante vertical para tamanho de pincel (`F`) e força (`Shift+F`), desenhando visualização dinâmica do diâmetro na tela.
+  * `Android/app/src/main/java/com/stab/sculptbridge/ui/QuickActionButton.kt`: Botões de disparo instantâneo para *Voxel Remesh*, seleção de subtool (`Alt+Q`), Undo e alternância Destro/Canhoto.
 * **Resultado:** Interface de controle completa e ergonômica rodando a 90 FPS no tablet.
 
 ---
@@ -289,10 +326,10 @@ O projeto é estruturado em **5 etapas modulares**, garantindo que cada fase ger
 ### Etapa 4: Pipeline de Vídeo de Baixa Latência (DXGI -> H.264 -> MediaCodec 90Hz) com Recuperação IDR
 * **Objetivo:** Transmitir a tela do Blender da memória de vídeo do PC para o display do Galaxy Tab S9 FE+ a 90 FPS via cabo USB 2.0 com latência imperceptível e recuperação instantânea contra perdas.
 * **Módulos a Desenvolver:**
-  * `DxgiCapture.h / .cpp`: Captura direta de frames da VRAM via `IDXGIOutputDuplication`.
-  * `H264Encoder.h / .cpp`: Codificador Media Foundation por hardware (NVENC/AMF/QSV) em modo de ultrabaixa latência (CBR 35 Mbps, zero B-frames) e suporte a injeção forçada de frame IDR sob demanda.
-  * `VideoServer.h / .cpp`: Transmissão de pacotes de vídeo NAL na porta `27184` e receptor do sinal de 1 byte `REQUEST_IDR`.
-  * `VideoSurfaceView.kt`: Visualizador Android utilizando `MediaCodec` configurado com `KEY_LOW_LATENCY = 1` conectado diretamente à `SurfaceView` do tablet.
+  * `Windows/src/DxgiCapture.cpp`: Captura direta de frames da VRAM via `IDXGIOutputDuplication`.
+  * `Windows/src/H264Encoder.cpp`: Codificador Media Foundation por hardware (NVENC/AMF/QSV) em modo de ultrabaixa latência (CBR 35 Mbps, zero B-frames) e suporte a injeção forçada de frame IDR sob demanda.
+  * `Windows/src/VideoServer.cpp`: Transmissão de pacotes de vídeo NAL na porta `27184` e receptor do sinal de 1 byte `REQUEST_IDR`.
+  * `Android/app/src/main/java/com/stab/sculptbridge/video/VideoSurfaceView.kt`: Visualizador Android utilizando `MediaCodec` configurado com `KEY_LOW_LATENCY = 1` conectado diretamente à `SurfaceView` do tablet.
 * **Resultado:** Display de vídeo nítido e fluido a 90 FPS no tablet com recuperação de quadros em 1 ms.
 
 ---
@@ -300,9 +337,9 @@ O projeto é estruturado em **5 etapas modulares**, garantindo que cada fase ger
 ### Etapa 5: Launcher Integrado e Add-on Opcional de Calibração para o Blender
 * **Objetivo:** Fornecer facilidade de uso em um clique com launcher para Windows e o plugin companion opcional para o Blender.
 * **Módulos a Desenvolver:**
-  * `sTab_launcher.exe` / `run_stab.bat`: Utilitário que detecta a conexão do tablet, configura os túneis ADB e inicia os servidores em segundo plano.
+  * `run_stab.bat` / `sTab_launcher.cpp`: Utilitário que detecta a conexão do tablet, configura os túneis ADB e inicia os servidores em segundo plano.
   * `blender_sTab_companion.py` (Add-on Opcional):
     * Botão de 1 clique no N-Panel do Blender para configurar a *Tablet API* para Windows Ink, sensibilidade e atalhos otimizados.
     * Servidor local leve de telemetria UDP (envia nome do brush ativo, raio e estado da simetria para exibição na UI do tablet).
   * Guia de uso e verificação de calibração para o usuário.
-* **Resultado:** Ecossistema finalizado, pronto para uso profissional no Blender.
+* **Resultado:** Ecossistema finalizado, documentado e pronto para uso profissional no Blender.

@@ -1,1 +1,33 @@
+# Temporary files
 /falta.md
+
+# Portable toolchains in dependencias (not checked into git)
+dependencias/w64devkit/
+dependencias/jdk-17/
+dependencias/platform-tools/
+dependencias/android-sdk/
+dependencias/*.zip
+dependencias/*.exe
+dependencias/*.tar.gz
+
+# Windows build artifacts
+Windows/bin/*.exe
+Windows/bin/*.pdb
+Windows/bin/*.ilk
+Windows/obj/
+*.o
+*.obj
+
+# Android build artifacts
+Android/.gradle/
+Android/build/
+Android/app/build/
+Android/local.properties
+Android/*.apk
+Android/.idea/
+*.iml
+
+# System and logs
+.DS_Store
+Thumbs.db
+*.log
