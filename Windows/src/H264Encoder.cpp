@@ -212,7 +212,10 @@ bool H264Encoder::EncodeFrame(ID3D11Device* pDevice, ID3D11DeviceContext* pConte
         desc.MiscFlags = 0;
 
         HRESULT hr = pDevice->CreateTexture2D(&desc, NULL, &m_cpuStagingTexture);
-        if (FAILED(hr)) return false;
+        if (FAILED(hr)) {
+            printf("[H264Encoder] Falha ao criar staging texture (hr: 0x%08lX)\n", hr);
+            return false;
+        }
     }
 
     // Copia a textura renderizada da GPU para o buffer de staging
@@ -220,7 +223,10 @@ bool H264Encoder::EncodeFrame(ID3D11Device* pDevice, ID3D11DeviceContext* pConte
 
     D3D11_MAPPED_SUBRESOURCE mapped;
     HRESULT hr = pContext->Map(m_cpuStagingTexture, 0, D3D11_MAP_READ, 0, &mapped);
-    if (FAILED(hr)) return false;
+    if (FAILED(hr)) {
+        printf("[H264Encoder] Falha em Map (hr: 0x%08lX)\n", hr);
+        return false;
+    }
 
     // Converte BGRA para NV12 compacto na memória
     int ySize = m_width * m_height;
@@ -278,44 +284,102 @@ bool H264Encoder::EncodeFrame(ID3D11Device* pDevice, ID3D11DeviceContext* pConte
     pInSample->SetSampleDuration(sampleDuration);
     m_frameIndex++;
 
-    hr = m_encoderMFT->ProcessInput(0, pInSample, 0);
-    pInSample->Release();
-    if (FAILED(hr)) return false;
+    // Se o encoder ainda tiver dados pendentes, drena primeiro
+    auto DrainOutput = [this, nv12TotalSize]() {
+        while (true) {
+            MFT_OUTPUT_STREAM_INFO osi = {};
+            m_encoderMFT->GetOutputStreamInfo(0, &osi);
 
-    // Extrai o pacote NAL de saída codificado
-    MFT_OUTPUT_DATA_BUFFER outBuffer = {};
-    IMFSample* pOutSample = NULL;
-    MFCreateSample(&pOutSample);
+            MFT_OUTPUT_DATA_BUFFER outBuffer = {};
+            IMFSample* pCreatedSample = NULL;
 
-    IMFMediaBuffer* pOutMediaBuffer = NULL;
-    MFCreateMemoryBuffer(nv12TotalSize, &pOutMediaBuffer);
-    pOutSample->AddBuffer(pOutMediaBuffer);
-    pOutMediaBuffer->Release();
-
-    outBuffer.pSample = pOutSample;
-    DWORD status = 0;
-    hr = m_encoderMFT->ProcessOutput(0, 1, &outBuffer, &status);
-
-    if (SUCCEEDED(hr) && outBuffer.pSample) {
-        IMFMediaBuffer* buf = NULL;
-        outBuffer.pSample->ConvertToContiguousBuffer(&buf);
-        if (buf) {
-            BYTE* pData = NULL;
-            DWORD len = 0;
-            buf->Lock(&pData, NULL, &len);
-
-            if (pData && len > 0 && m_onPacketCb) {
-                // Checa se o frame gerado é chave (IDR)
-                UINT32 isCleanPoint = 0;
-                outBuffer.pSample->GetUINT32(MFSampleExtension_CleanPoint, &isCleanPoint);
-                m_onPacketCb((const uint8_t*)pData, (size_t)len, isCleanPoint != 0);
+            if (!(osi.dwFlags & (MFT_OUTPUT_STREAM_PROVIDES_SAMPLES | MFT_OUTPUT_STREAM_CAN_PROVIDE_SAMPLES))) {
+                MFCreateSample(&pCreatedSample);
+                IMFMediaBuffer* pOutMediaBuffer = NULL;
+                DWORD bufSize = osi.cbSize > 0 ? osi.cbSize : (DWORD)nv12TotalSize;
+                MFCreateMemoryBuffer(bufSize, &pOutMediaBuffer);
+                pCreatedSample->AddBuffer(pOutMediaBuffer);
+                pOutMediaBuffer->Release();
+                outBuffer.pSample = pCreatedSample;
             }
 
-            buf->Unlock();
-            buf->Release();
+            DWORD status = 0;
+            HRESULT hr = m_encoderMFT->ProcessOutput(0, 1, &outBuffer, &status);
+
+            if (outBuffer.pEvents) {
+                outBuffer.pEvents->Release();
+                outBuffer.pEvents = NULL;
+            }
+
+            if (hr == (HRESULT)0xC00D36B1L) { // MF_E_TRANSFORM_STREAM_CHANGE
+                if (pCreatedSample) {
+                    pCreatedSample->Release();
+                    pCreatedSample = NULL;
+                }
+                IMFMediaType* pNewType = NULL;
+                hr = m_encoderMFT->GetOutputAvailableType(0, 0, &pNewType);
+                if (SUCCEEDED(hr) && pNewType) {
+                    m_encoderMFT->SetOutputType(0, pNewType, 0);
+                    pNewType->Release();
+                }
+                continue;
+            }
+
+            if (hr == (HRESULT)0xC00D6D72L) { // MF_E_TRANSFORM_NEED_MORE_INPUT
+                if (pCreatedSample) pCreatedSample->Release();
+                break;
+            }
+
+            if (FAILED(hr)) {
+                if (pCreatedSample) pCreatedSample->Release();
+                break;
+            }
+
+            IMFSample* sampleWithData = outBuffer.pSample ? outBuffer.pSample : pCreatedSample;
+            if (sampleWithData) {
+                IMFMediaBuffer* buf = NULL;
+                sampleWithData->ConvertToContiguousBuffer(&buf);
+                if (buf) {
+                    BYTE* pData = NULL;
+                    DWORD len = 0;
+                    buf->Lock(&pData, NULL, &len);
+
+                    if (pData && len > 0 && m_onPacketCb) {
+                        UINT32 isCleanPoint = 0;
+                        sampleWithData->GetUINT32(MFSampleExtension_CleanPoint, &isCleanPoint);
+                        m_onPacketCb((const uint8_t*)pData, (size_t)len, isCleanPoint != 0);
+                    }
+
+                    buf->Unlock();
+                    buf->Release();
+                }
+            }
+
+            if (pCreatedSample) {
+                pCreatedSample->Release();
+                pCreatedSample = NULL;
+            }
+            if (outBuffer.pSample && outBuffer.pSample != pCreatedSample) {
+                outBuffer.pSample->Release();
+                outBuffer.pSample = NULL;
+            }
         }
+    };
+
+    // Tenta ProcessInput
+    hr = m_encoderMFT->ProcessInput(0, pInSample, 0);
+    if (hr == (HRESULT)0xC00D36B5L) { // MF_E_NOTACCEPTING
+        DrainOutput();
+        hr = m_encoderMFT->ProcessInput(0, pInSample, 0);
+    }
+    pInSample->Release();
+
+    if (FAILED(hr)) {
+        printf("[H264Encoder] Falha em ProcessInput (hr: 0x%08lX)\n", hr);
+        return false;
     }
 
-    if (pOutSample) pOutSample->Release();
+    // Drena os pacotes NAL codificados
+    DrainOutput();
     return true;
 }

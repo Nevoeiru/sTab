@@ -37,17 +37,38 @@ int main() {
         serverPath = "\"" + rootDir + "\\Windows\\bin\\sTab_server.exe\"";
     }
 
+    // 0. Garante que qualquer instancia orfa ou antiga seja encerrada para liberar portas
+    system("taskkill /F /IM sTab_server.exe >nul 2>&1");
+    Sleep(300);
+
     // 1. Configura os tuneis reversos via ADB
     printf("[1/3] Configurando tuneis USB reversos de ultra-baixa latencia...\n");
-    std::string cmd1 = adbPath + " reverse tcp:27183 tcp:27183";
-    std::string cmd2 = adbPath + " reverse tcp:27184 tcp:27184";
-    std::string cmd3 = adbPath + " reverse tcp:27185 tcp:27185";
+    auto RunTimedCmd = [](const std::string& cmd) -> bool {
+        STARTUPINFOA si = {};
+        si.cb = sizeof(si);
+        si.dwFlags = STARTF_USESHOWWINDOW;
+        si.wShowWindow = SW_HIDE;
+        PROCESS_INFORMATION pi = {};
+        std::string modCmd = cmd;
+        if (CreateProcessA(NULL, &modCmd[0], NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
+            DWORD waitRes = WaitForSingleObject(pi.hProcess, 1500);
+            if (waitRes == WAIT_TIMEOUT) {
+                TerminateProcess(pi.hProcess, 1);
+            }
+            DWORD exitCode = 1;
+            GetExitCodeProcess(pi.hProcess, &exitCode);
+            CloseHandle(pi.hThread);
+            CloseHandle(pi.hProcess);
+            return (waitRes == WAIT_OBJECT_0 && exitCode == 0);
+        }
+        return false;
+    };
 
-    int res1 = system(cmd1.c_str());
-    int res2 = system(cmd2.c_str());
-    int res3 = system(cmd3.c_str());
+    bool ok1 = RunTimedCmd(adbPath + " reverse tcp:27183 tcp:27183");
+    bool ok2 = RunTimedCmd(adbPath + " reverse tcp:27184 tcp:27184");
+    bool ok3 = RunTimedCmd(adbPath + " reverse tcp:27185 tcp:27185");
 
-    if (res1 == 0 && res2 == 0 && res3 == 0) {
+    if (ok1 && ok2 && ok3) {
         printf("  [OK] Porta 27183 (Input S-Pen 240Hz, Touch e Modificadores) ATIVA.\n");
         printf("  [OK] Porta 27184 (Video H.264 90Hz DXGI GPU) ATIVA.\n");
         printf("  [OK] Porta 27185 (Telemetria Bidirecional Blender) ATIVA.\n\n");
@@ -92,6 +113,9 @@ int main() {
     int serverRes = system(serverPath.c_str());
 
     printf("\n[sTab Launcher] Servidor finalizado com codigo: %d\n", serverRes);
+    if (serverRes != 0) {
+        system("pause");
+    }
     return serverRes;
 }
 

@@ -11,6 +11,7 @@ extern volatile bool g_running;
 ServerHud::ServerHud()
     : m_hWnd(NULL)
     , m_hThread(NULL)
+    , m_hReadyEvent(NULL)
     , m_threadId(0)
     , m_running(false)
     , m_fontTitle(NULL)
@@ -28,11 +29,25 @@ ServerHud::~ServerHud() {
 }
 
 bool ServerHud::Start(HINSTANCE hInstance) {
+    (void)hInstance;
     if (m_running) return true;
     m_running = true;
 
+    m_hReadyEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
     m_hThread = CreateThread(NULL, 0, WindowThreadStatic, this, 0, &m_threadId);
-    return (m_hThread != NULL);
+    if (!m_hThread) {
+        CloseHandle(m_hReadyEvent);
+        m_hReadyEvent = NULL;
+        m_running = false;
+        return false;
+    }
+
+    // Aguarda sincronamente até a janela ser criada e visível no Desktop
+    WaitForSingleObject(m_hReadyEvent, 3000);
+    CloseHandle(m_hReadyEvent);
+    m_hReadyEvent = NULL;
+
+    return (m_hWnd != NULL);
 }
 
 void ServerHud::Stop() {
@@ -66,7 +81,12 @@ DWORD WINAPI ServerHud::WindowThreadStatic(LPVOID lpParam) {
 }
 
 LRESULT CALLBACK ServerHud::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    auto* self = (ServerHud*)GetWindowLongPtrW(hWnd, GWLP_USERDATA);
+    ServerHud* self = (ServerHud*)GetWindowLongPtrW(hWnd, GWLP_USERDATA);
+    if (!self && msg == WM_NCCREATE) {
+        auto* cs = (LPCREATESTRUCTW)lParam;
+        self = (ServerHud*)cs->lpCreateParams;
+        SetWindowLongPtrW(hWnd, GWLP_USERDATA, (LONG_PTR)self);
+    }
 
     switch (msg) {
         case WM_CREATE: {
@@ -129,16 +149,29 @@ void ServerHud::WindowThread() {
         L"sTab v2.0 - SculptBridge Server (Galaxy Tab S9 FE+ no Blender)",
         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
         posX, posY, winWidth, winHeight,
-        NULL, NULL, hInst, NULL
+        NULL, NULL, hInst, this
     );
 
-    if (!m_hWnd) return;
+    if (m_hWnd) {
+        // Ativa barra de título escura no Windows 10/11
+        BOOL darkMode = TRUE;
+        DwmSetWindowAttribute(m_hWnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &darkMode, sizeof(darkMode));
 
-    SetWindowLongPtrW(m_hWnd, GWLP_USERDATA, (LONG_PTR)this);
+        ShowWindow(m_hWnd, SW_SHOWNORMAL);
+        UpdateWindow(m_hWnd);
+        SetForegroundWindow(m_hWnd);
+    }
 
-    // Ativa barra de título escura no Windows 10/11
-    BOOL darkMode = TRUE;
-    DwmSetWindowAttribute(m_hWnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &darkMode, sizeof(darkMode));
+    if (m_hReadyEvent) {
+        SetEvent(m_hReadyEvent);
+    }
+
+    if (!m_hWnd) {
+        printf("[ServerHud] Falha ao instanciar HWND da janela grafica (Erro: %lu).\n", GetLastError());
+        return;
+    }
+
+    printf("[ServerHud] Janela HUD em tempo real aberta com sucesso no Windows.\n");
 
     // Inicializa fontes tipográficas
     m_fontTitle   = CreateFontW(22, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");

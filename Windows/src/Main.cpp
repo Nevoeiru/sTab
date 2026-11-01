@@ -145,6 +145,14 @@ int RunSelfTest() {
 }
 
 int main(int argc, char* argv[]) {
+    // Desativa buffer para exibicao imediata de logs em console e arquivos
+    setvbuf(stdout, NULL, _IONBF, 0);
+    setvbuf(stderr, NULL, _IONBF, 0);
+
+    // Inicializa Winsock globalmente
+    WSADATA wsaData;
+    WSAStartup(MAKEWORD(2, 2), &wsaData);
+
     // 0. Configura Per-Monitor DPI Awareness v2 para precisao absoluta de coordenadas fisicas
     HMODULE hUser32Dpi = LoadLibraryW(L"user32.dll");
     if (hUser32Dpi) {
@@ -185,12 +193,25 @@ int main(int argc, char* argv[]) {
 
     if (GetFileAttributesW(adbBinary.c_str()) != INVALID_FILE_ATTRIBUTES) {
         printf("[sTab] Configurando tuneis reversos USB no Galaxy Tab S9 FE+...\n");
-        std::wstring r1 = L"\"\"" + adbBinary + L"\" reverse tcp:27183 tcp:27183 >nul 2>&1\"";
-        std::wstring r2 = L"\"\"" + adbBinary + L"\" reverse tcp:27184 tcp:27184 >nul 2>&1\"";
-        std::wstring r3 = L"\"\"" + adbBinary + L"\" reverse tcp:27185 tcp:27185 >nul 2>&1\"";
-        _wsystem(r1.c_str());
-        _wsystem(r2.c_str());
-        _wsystem(r3.c_str());
+        auto RunAdbTimeout = [](const std::wstring& cmd) {
+            STARTUPINFOW si = {};
+            si.cb = sizeof(si);
+            si.dwFlags = STARTF_USESHOWWINDOW;
+            si.wShowWindow = SW_HIDE;
+            PROCESS_INFORMATION pi = {};
+            std::wstring modCmd = cmd;
+            if (CreateProcessW(NULL, &modCmd[0], NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
+                if (WaitForSingleObject(pi.hProcess, 1500) == WAIT_TIMEOUT) {
+                    TerminateProcess(pi.hProcess, 1);
+                }
+                CloseHandle(pi.hThread);
+                CloseHandle(pi.hProcess);
+            }
+        };
+
+        RunAdbTimeout(L"\"" + adbBinary + L"\" reverse tcp:27183 tcp:27183");
+        RunAdbTimeout(L"\"" + adbBinary + L"\" reverse tcp:27184 tcp:27184");
+        RunAdbTimeout(L"\"" + adbBinary + L"\" reverse tcp:27185 tcp:27185");
         printf("[sTab] Tuneis reversos ativos: Portas 27183, 27184 e 27185.\n\n");
     }
 
@@ -236,6 +257,11 @@ int main(int argc, char* argv[]) {
     // Vincula a saída do encoder ao servidor de vídeo TCP
     encoder.SetPacketCallback([&videoServer](const uint8_t* data, size_t size, bool isKeyFrame) {
         videoServer.SendNalPacket(data, size, isKeyFrame);
+    });
+
+    // Quando o tablet conectar no stream de video, força envio de IDR imediatamente
+    videoServer.SetClientConnectedCallback([&encoder]() {
+        encoder.ForceKeyFrame();
     });
 
     // Vincula a solicitacao REQUEST_IDR do tablet para forçar quadro chave no encoder
@@ -296,6 +322,13 @@ int main(int argc, char* argv[]) {
         auto* enc = (H264Encoder*)((void**)param)[1];
         auto* vServ = (VideoServer*)((void**)param)[2];
 
+        CoInitializeEx(NULL, COINIT_MULTITHREADED);
+        HDESK hDesk = OpenInputDesktop(0, FALSE, GENERIC_ALL);
+        if (hDesk) {
+            SetThreadDesktop(hDesk);
+            CloseDesktop(hDesk);
+        }
+
         while (g_running) {
             if (vServ->IsClientConnected() && cap->IsInitialized() && enc->IsInitialized()) {
                 ID3D11Texture2D* pTex = NULL;
@@ -307,6 +340,8 @@ int main(int argc, char* argv[]) {
                 Sleep(20);
             }
         }
+
+        CoUninitialize();
         return 0;
     }, new void*[3]{ &capture, &encoder, &videoServer }, 0, NULL);
 
@@ -336,11 +371,6 @@ int main(int argc, char* argv[]) {
 
         serverHud.UpdateTelemetry(hudState);
 
-        if (!serverHud.IsOpen() && g_running) {
-            g_running = false;
-            break;
-        }
-
         if (tcpServer.IsClientConnected() || videoServer.IsClientConnected()) {
             printf("[Status] Telemetria: ~%.0f p/s | Video Stream: ~%.0f FPS | Transmitido: %.2f MB\n",
                    (double)(currentTel - lastTelemetryPackets) * 2.0,
@@ -363,6 +393,8 @@ int main(int argc, char* argv[]) {
     tcpServer.Stop();
     injector.Shutdown();
     translator.ResetAllInputStates();
+
+    WSACleanup();
 
     printf("[sTab] Finalizado com sucesso.\n");
     return 0;

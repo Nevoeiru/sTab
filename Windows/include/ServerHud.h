@@ -71,6 +71,7 @@ private:
 
     HWND m_hWnd;
     HANDLE m_hThread;
+    HANDLE m_hReadyEvent;
     DWORD m_threadId;
     std::atomic<bool> m_running;
 

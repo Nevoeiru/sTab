@@ -121,5 +121,6 @@ echo.
 
 echo.
 echo [sTab] Servidor finalizado.
+if %ERRORLEVEL% neq 0 pause
 endlocal
 

@@ -5,6 +5,7 @@
 #include <shellapi.h>
 #include <shlobj.h>
 #include <shlwapi.h>
+#include <tlhelp32.h>
 #include <stdio.h>
 #include <string>
 #include <vector>
@@ -186,25 +187,60 @@ bool InstallVirtualDisplayDriver(const std::wstring& rootDir) {
         RegCloseKey(hKey);
     }
 
-    // Instalação do driver via PnPUtil
+    // 1. Instalação do pacote de driver via PnPUtil
     printf("      Registrando pacote do driver no Windows (PnPUtil)...\n");
     std::wstring pnpCmd = L"pnputil /add-driver \"C:\\VirtualDisplayDriver\\MttVDD.inf\" /install >nul 2>&1";
     _wsystem(pnpCmd.c_str());
 
-    // Cria o dispositivo raiz Root\MttVDD via devcon se ainda não estiver instanciado
+    // 2. Instancia o dispositivo de exibição indireta Root\MttVDD via devcon
     std::wstring devconExe = vddDest + L"\\devcon.exe";
     if (GetFileAttributesW(devconExe.c_str()) != INVALID_FILE_ATTRIBUTES) {
-        std::wstring devconCheck = L"\"\"" + devconExe + L"\" status Root\\MttVDD >nul 2>&1\"";
-        int checkRes = _wsystem(devconCheck.c_str());
-        if (checkRes != 0) {
-            printf("      Instanciando dispositivo de Monitor Virtual (Root\\MttVDD)...\n");
-            std::wstring devconInstall = L"\"\"" + devconExe + L"\" install \"C:\\VirtualDisplayDriver\\MttVDD.inf\" Root\\MttVDD >nul 2>&1\"";
-            _wsystem(devconInstall.c_str());
-        }
+        printf("      Instanciando dispositivo de Monitor Virtual (Root\\MttVDD)...\n");
+        std::wstring devconInstall = L"\"\"" + devconExe + L"\" install \"C:\\VirtualDisplayDriver\\MttVDD.inf\" Root\\MttVDD >nul 2>&1\"";
+        _wsystem(devconInstall.c_str());
     }
 
     printf("  [OK] Driver de Monitor Virtual 16:10 (2560x1600 @ 90Hz) instalado com sucesso!\n");
     return true;
+}
+
+/**
+ * @brief Encerra com segurança qualquer versão anterior em execução do sTab_server ou sTab_launcher.
+ * Garante que portas de rede e arquivos binários não estejam travados por processos antigos.
+ */
+void KillRunningStabProcesses() {
+    printf("[Seguranca] Encerrando processos sTab anteriores em execucao...\n");
+
+    // 1. Encerra via taskkill do Windows
+    _wsystem(L"taskkill /F /IM sTab_server.exe /IM sTab_launcher.exe /IM adb.exe >nul 2>&1");
+
+    // 2. Garante via Win32 Toolhelp API
+    HANDLE hSnap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (hSnap != INVALID_HANDLE_VALUE) {
+        PROCESSENTRY32W pe = {};
+        pe.dwSize = sizeof(pe);
+        DWORD myPid = GetCurrentProcessId();
+
+        if (Process32FirstW(hSnap, &pe)) {
+            do {
+                if (pe.th32ProcessID != myPid) {
+                    if (_wcsicmp(pe.szExeFile, L"sTab_server.exe") == 0 ||
+                        _wcsicmp(pe.szExeFile, L"sTab_launcher.exe") == 0 ||
+                        _wcsicmp(pe.szExeFile, L"adb.exe") == 0) {
+                        HANDLE hProc = OpenProcess(PROCESS_TERMINATE | SYNCHRONIZE, FALSE, pe.th32ProcessID);
+                        if (hProc) {
+                            TerminateProcess(hProc, 0);
+                            WaitForSingleObject(hProc, 1000);
+                            CloseHandle(hProc);
+                        }
+                    }
+                }
+            } while (Process32NextW(hSnap, &pe));
+        }
+        CloseHandle(hSnap);
+    }
+    Sleep(500); // Aguarda liberação completa de sockets e handles pelo SO
+    printf("  [OK] Processos anteriores finalizados com sucesso.\n\n");
 }
 
 int main() {
@@ -223,6 +259,9 @@ int main() {
         }
         printf("[AVISO] Execucao continuada sem privilegios de Administrador.\n\n");
     }
+
+    // 0.1 Segurança: Encerra versões anteriores em execução
+    KillRunningStabProcesses();
 
     // 1. Diretório base
     wchar_t exePath[MAX_PATH];
@@ -276,9 +315,13 @@ int main() {
 
     // 5. Atualização do Atalho na Área de Trabalho
     printf("[5/5] Atualizando atalho na Area de Trabalho...\n");
-    std::wstring launcherBat = rootDir + L"\\run_stab.bat";
+    std::wstring launcherExe = rootDir + L"\\Windows\\bin\\sTab_launcher.exe";
+    if (GetFileAttributesW(launcherExe.c_str()) == INVALID_FILE_ATTRIBUTES) {
+        launcherExe = rootDir + L"\\run_stab.bat";
+    }
+
     bool shortcutUpdated = UpdateDesktopShortcut(
-        launcherBat,
+        launcherExe,
         rootDir,
         L"sTab - Iniciar Mesa Digitalizadora no Blender (Galaxy Tab S9 FE+)",
         L"sTab (Iniciar Mesa Digitalizadora)"
@@ -292,14 +335,11 @@ int main() {
     printf("====================================================================\n");
     printf("   [SUCESSO] Instalacao / Atualizacao Concluida com Exito!          \n");
     printf("====================================================================\n");
-    printf("  Novidades desta versao:\n");
-    printf("  * Servidor com Janela HUD Grafica em tempo real (Conexao, FPS, S-Pen)\n");
-    printf("  * Driver de Monitor Virtual 16:10 calibrado para 2560x1600 @ 90Hz\n");
-    printf("  * Telemetria bidirecional completa com o Blender 3D\n\n");
-    printf("  Para iniciar agora, execute o atalho na sua Area de Trabalho.\n");
-    printf("====================================================================\n\n");
+    printf("  Iniciando agora o servidor sTab com Janela HUD no Windows...\n\n");
 
-    printf("Pressione qualquer tecla para finalizar...");
-    getchar();
+    // Inicia o launcher automaticamente
+    ShellExecuteW(NULL, L"open", launcherExe.c_str(), NULL, rootDir.c_str(), SW_SHOWNORMAL);
+
+    Sleep(1000);
     return 0;
 }

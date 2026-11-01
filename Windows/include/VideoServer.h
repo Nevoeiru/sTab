@@ -8,6 +8,7 @@
 #include <windows.h>
 #include <atomic>
 #include <vector>
+#include <functional>
 
 /**
  * @brief Servidor TCP de streaming de vídeo H.264 em tempo real (Porta 27184 via túnel USB).
@@ -37,6 +38,8 @@ public:
      */
     void SendNalPacket(const uint8_t* data, size_t size, bool isKeyFrame);
 
+    void SetClientConnectedCallback(std::function<void()> cb) { m_onClientConnectedCb = cb; }
+
     bool IsRunning() const { return m_running; }
     bool IsClientConnected() const { return m_clientConnected; }
     uint64_t GetTotalFramesSent() const { return m_framesSent; }
@@ -57,6 +60,7 @@ private:
     std::atomic<uint64_t> m_bytesSent;
 
     CRITICAL_SECTION m_sendLock;
+    std::function<void()> m_onClientConnectedCb;
 };
 
 #endif // STAB_VIDEO_SERVER_H

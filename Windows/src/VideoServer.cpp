@@ -126,6 +126,9 @@ void VideoServer::RunListener() {
                     LeaveCriticalSection(&m_sendLock);
 
                     printf("[VideoServer] >>> Receptor de video do Galaxy Tab S9 FE+ CONECTADO! <<<\n");
+                    if (m_onClientConnectedCb) {
+                        m_onClientConnectedCb();
+                    }
                 }
             }
             continue;
