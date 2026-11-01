@@ -9,6 +9,7 @@ $toolPaths = @(
     "$Root\dependencias\platform-tools",
     "$Root\dependencias\w64devkit\bin",
     "$Root\dependencias\jdk-17\bin",
+    "$Root\dependencias\gradle-8.5\bin",
     "$Root\dependencias\android-sdk\cmdline-tools\latest\bin"
 )
 

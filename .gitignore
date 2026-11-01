@@ -6,6 +6,7 @@ dependencias/w64devkit/
 dependencias/jdk-17/
 dependencias/platform-tools/
 dependencias/android-sdk/
+dependencias/gradle-*/
 dependencias/*.zip
 dependencias/*.exe
 dependencias/*.tar.gz
