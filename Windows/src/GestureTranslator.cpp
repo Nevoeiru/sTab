@@ -3,6 +3,7 @@
 
 GestureTranslator::GestureTranslator()
     : m_onNavStateChanged(nullptr)
+    , m_onDisplayModeToggle(nullptr)
     , m_isOrbitActive(false)
     , m_isPanActive(false)
     , m_isShiftHeld(false)
@@ -218,6 +219,13 @@ void GestureTranslator::ProcessSculptPadAction(const InputPacket& packet) {
         case SCULPTPAD_TRIGGER_TRANSFER:
             // Dispara 'Alt + Q' para alternar objeto / subtool no Sculpt Mode
             TriggerKeyCombination(VK_MENU, 'Q');
+            break;
+
+        case SCULPTPAD_TOGGLE_DISPLAY_MODE:
+            // Alterna entre modo Estendido e Espelhado
+            if (m_onDisplayModeToggle) {
+                m_onDisplayModeToggle();
+            }
             break;
 
         default:

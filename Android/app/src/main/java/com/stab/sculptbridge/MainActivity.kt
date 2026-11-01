@@ -241,6 +241,9 @@ class MainActivity : Activity() {
     }
 
     private fun emitSculptPadAction(action: Byte) {
+        if (action == Protocol.SCULPTPAD_TOGGLE_DISPLAY_MODE) {
+            Toast.makeText(this, "Alternando modo de tela (Estendido / Espelhado)...", Toast.LENGTH_SHORT).show()
+        }
         if (action == Protocol.GESTURE_TAP_TWO_FINGERS || action == Protocol.GESTURE_TAP_THREE_FINGERS) {
             val packet = InputPacket(
                 packetType = Protocol.PACKET_TYPE_TOUCH_GESTURE,

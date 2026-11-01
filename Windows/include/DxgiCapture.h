@@ -14,6 +14,8 @@
  */
 class DxgiCapture {
 public:
+    typedef void (*TopologyChangeCallback)(int newWidth, int newHeight, int newDeskX, int newDeskY, bool isExtended, void* userData);
+
     DxgiCapture();
     ~DxgiCapture();
 
@@ -25,6 +27,16 @@ public:
     bool Initialize(bool forceMirror = false);
 
     /**
+     * @brief Reconfigura a captura para alternar dinamicamente entre Modo Estendido e Modo Espelhado.
+     */
+    bool Reconfigure(bool forceMirror);
+
+    /**
+     * @brief Define callback chamado quando a topologia do Windows (Win+P ou resolução) for alterada.
+     */
+    void SetTopologyChangeCallback(TopologyChangeCallback cb, void* userData);
+
+    /**
      * @brief Libera os recursos do DirectX e a duplicação de tela.
      */
     void Shutdown();
@@ -32,7 +44,7 @@ public:
     /**
      * @brief Captura o próximo frame disponível da GPU.
      * @param ppTexture Ponteiro para receber a textura D3D11 capturada.
-     * @param timeoutMs Tempo limite de espera por novo frame (padrão 16ms para ~60fps).
+     * @param timeoutMs Tempo limite de espera por novo frame.
      * @param pIsNewFrame [Saída opcional] true se houve atualização real de pixels no desktop.
      * @return true se um frame (novo ou de retenção) foi adquirido com sucesso.
      */
@@ -51,10 +63,12 @@ public:
     ID3D11DeviceContext* GetContext() const { return m_d3dContext; }
     bool IsInitialized() const { return m_initialized; }
     bool IsUsingVirtualDisplay() const { return m_isUsingVirtualDisplay; }
+    bool IsMirrorMode() const { return m_forceMirror; }
+
+    bool SetupDuplication(bool forceMirror = false);
 
 private:
     bool CreateD3DDevice(IDXGIAdapter* adapter = NULL);
-    bool SetupDuplication(bool forceMirror = false);
 
     ID3D11Device*           m_d3dDevice;
     ID3D11DeviceContext*    m_d3dContext;
@@ -70,7 +84,9 @@ private:
     bool m_hasAcquiredFrame;
     bool m_isUsingVirtualDisplay;
     bool m_forceMirror;
+
+    TopologyChangeCallback m_topologyCb;
+    void* m_topologyUserData;
 };
 
 #endif // STAB_DXGI_CAPTURE_H
-

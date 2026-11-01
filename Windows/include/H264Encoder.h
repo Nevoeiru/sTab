@@ -60,6 +60,8 @@ public:
 
     void SetPacketCallback(OnH264PacketCallback cb) { m_onPacketCb = cb; }
     bool IsInitialized() const { return m_initialized; }
+    int GetWidth() const { return m_width; }
+    int GetHeight() const { return m_height; }
 
     void SetDisplayOrigin(int x, int y) { m_desktopX = x; m_desktopY = y; }
     void SetPenHoverActive(bool active) { m_penHoverActive = active; }

@@ -25,6 +25,7 @@ g++ -std=c++17 -O3 -Wall -Wextra -I"%SCRIPT_DIR%include" ^
     "%SCRIPT_DIR%src\VideoServer.cpp" ^
     "%SCRIPT_DIR%src\TelemetryBridge.cpp" ^
     "%SCRIPT_DIR%src\ServerHud.cpp" ^
+    "%SCRIPT_DIR%src\HudLineart.cpp" ^
     -o "%SCRIPT_DIR%bin\sTab_server.exe" ^
     -lws2_32 -luser32 -lgdi32 -ldwmapi -ld3d11 -ldxgi -lmfplat -lmfuuid -lole32 -loleaut32 -lshlwapi -static -s
 

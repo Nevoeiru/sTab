@@ -15,11 +15,18 @@ DxgiCapture::DxgiCapture()
     , m_hasAcquiredFrame(false)
     , m_isUsingVirtualDisplay(false)
     , m_forceMirror(false)
+    , m_topologyCb(NULL)
+    , m_topologyUserData(NULL)
 {
 }
 
 DxgiCapture::~DxgiCapture() {
     Shutdown();
+}
+
+void DxgiCapture::SetTopologyChangeCallback(TopologyChangeCallback cb, void* userData) {
+    m_topologyCb = cb;
+    m_topologyUserData = userData;
 }
 
 bool DxgiCapture::CreateD3DDevice(IDXGIAdapter* adapter) {
@@ -54,6 +61,7 @@ bool DxgiCapture::CreateD3DDevice(IDXGIAdapter* adapter) {
 }
 
 bool DxgiCapture::SetupDuplication(bool forceMirror) {
+    m_forceMirror = forceMirror;
     if (m_duplication) {
         m_duplication->Release();
         m_duplication = NULL;
@@ -71,6 +79,41 @@ bool DxgiCapture::SetupDuplication(bool forceMirror) {
     if (FAILED(hr)) {
         printf("[DxgiCapture] Erro ao criar DXGIFactory1 (hr: 0x%08lX)\n", hr);
         return false;
+    }
+
+    // Detecção prévia de topologia: verifica se existem saídas com coordenadas estendidas reais
+    bool hasExtendedCoordinates = false;
+    int totalOutputs = 0;
+
+    for (UINT a = 0; ; ++a) {
+        IDXGIAdapter1* curAdapter = NULL;
+        if (factory->EnumAdapters1(a, &curAdapter) == DXGI_ERROR_NOT_FOUND) break;
+
+        DXGI_ADAPTER_DESC1 aDesc;
+        curAdapter->GetDesc1(&aDesc);
+        if (aDesc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) {
+            curAdapter->Release();
+            continue;
+        }
+
+        for (UINT o = 0; ; ++o) {
+            IDXGIOutput* curOutput = NULL;
+            if (curAdapter->EnumOutputs(o, &curOutput) == DXGI_ERROR_NOT_FOUND) break;
+
+            DXGI_OUTPUT_DESC oDesc;
+            curOutput->GetDesc(&oDesc);
+            if (oDesc.DesktopCoordinates.left != 0 || oDesc.DesktopCoordinates.top != 0) {
+                hasExtendedCoordinates = true;
+            }
+            totalOutputs++;
+            curOutput->Release();
+        }
+        curAdapter->Release();
+    }
+
+    bool isWindowsCloneMode = (!hasExtendedCoordinates && totalOutputs > 1);
+    if (isWindowsCloneMode) {
+        printf("[DxgiCapture] Topologia Win+P Duplicar (Clone) detectada no sistema.\n");
     }
 
     IDXGIAdapter1* selectedAdapter = NULL;
@@ -101,17 +144,31 @@ bool DxgiCapture::SetupDuplication(bool forceMirror) {
             int left = oDesc.DesktopCoordinates.left;
             int top = oDesc.DesktopCoordinates.top;
 
-            int score = 10; // Base score
+            int score = 10;
+            bool isPrimary = (left == 0 && top == 0 && a == 0 && o == 0);
             bool isSecondary = (left != 0 || top != 0 || o > 0 || a > 0);
-            if (forceMirror) {
-                if (!isSecondary) score += 200; // Prioriza monitor primário no modo espelhado
+
+            if (isWindowsCloneMode || forceMirror) {
+                // Modo Espelhado / Clone: duplicar SEMPRE o monitor primário (0,0)
+                // Chamar DuplicateOutput em monitor clonado secundário falha com DXGI_ERROR_UNSUPPORTED
+                if (isPrimary) {
+                    score += 300;
+                } else {
+                    score = 0;
+                }
             } else {
-                if (isSecondary) score += 100; // Prioriza monitor estendido
+                // Modo Estendido: prioriza saídas com desktopCoordinates estendidas reais
+                if (left != 0 || top != 0) {
+                    score += 250;
+                } else if (isSecondary) {
+                    score += 100;
+                }
             }
+
             if (w == 1920 && h == 1080) {
-                score += 50; // Alvo preferencial 1080p
+                score += 50;
             } else if (w == 2560 && h == 1600) {
-                score += 40; // Alvo nativo 16:10
+                score += 40;
             } else if (w > 800) {
                 score += 15;
             }
@@ -129,7 +186,6 @@ bool DxgiCapture::SetupDuplication(bool forceMirror) {
                 curOutput->Release();
             }
         }
-
         curAdapter->Release();
     }
     factory->Release();
@@ -141,7 +197,6 @@ bool DxgiCapture::SetupDuplication(bool forceMirror) {
         return false;
     }
 
-    // Cria o D3D11Device no adapter correto que possui a saida
     if (m_d3dDevice) {
         m_d3dDevice->Release();
         m_d3dDevice = NULL;
@@ -166,12 +221,12 @@ bool DxgiCapture::SetupDuplication(bool forceMirror) {
     m_desktopY = outputDesc.DesktopCoordinates.top;
     m_isUsingVirtualDisplay = (m_desktopX != 0 || m_desktopY != 0 || selectedOutputIndex > 0 || selectedAdapterIndex > 0);
 
-    if (m_isUsingVirtualDisplay) {
-        printf("[DxgiCapture] Monitor Estendido selecionado: (Adapter %d, Output %d: %dx%d em %d,%d)!\n",
+    if (m_isUsingVirtualDisplay && !forceMirror && !isWindowsCloneMode) {
+        printf("[DxgiCapture] Monitor Estendido ativo: (Adapter %d, Output %d: %dx%d em %d,%d)!\n",
                selectedAdapterIndex, selectedOutputIndex, m_width, m_height, m_desktopX, m_desktopY);
     } else {
-        printf("[DxgiCapture] Utilizando monitor primario espelhado (Adapter %d, Output %d: %dx%d).\n",
-               selectedAdapterIndex, selectedOutputIndex, m_width, m_height);
+        printf("[DxgiCapture] Monitor Primario Espelhado ativo: (Adapter %d, Output %d: %dx%d em %d,%d).\n",
+               selectedAdapterIndex, selectedOutputIndex, m_width, m_height, m_desktopX, m_desktopY);
     }
 
     IDXGIOutput1* output1 = NULL;
@@ -187,7 +242,6 @@ bool DxgiCapture::SetupDuplication(bool forceMirror) {
         return false;
     }
 
-    // Cria textura D3D11 de retencao para sustentar cadencia estavel durante cenas estaticas
     if (m_lastFrameTexture) {
         m_lastFrameTexture->Release();
         m_lastFrameTexture = NULL;
@@ -211,7 +265,6 @@ bool DxgiCapture::Initialize(bool forceMirror) {
     if (m_initialized) return true;
     m_forceMirror = forceMirror;
 
-    // Vincula a thread ao Desktop de entrada ativo
     HDESK hDesk = OpenInputDesktop(0, FALSE, GENERIC_ALL);
     if (hDesk) {
         SetThreadDesktop(hDesk);
@@ -223,6 +276,10 @@ bool DxgiCapture::Initialize(bool forceMirror) {
     m_initialized = true;
     printf("[DxgiCapture] Desktop Duplication GPU inicializado com sucesso (%dx%d).\n", m_width, m_height);
     return true;
+}
+
+bool DxgiCapture::Reconfigure(bool forceMirror) {
+    return SetupDuplication(forceMirror);
 }
 
 void DxgiCapture::Shutdown() {
@@ -270,8 +327,6 @@ bool DxgiCapture::AcquireNextFrame(ID3D11Texture2D** ppTexture, DWORD timeoutMs,
     HRESULT hr = m_duplication->AcquireNextFrame(timeoutMs, &frameInfo, &desktopResource);
 
     if (hr == DXGI_ERROR_WAIT_TIMEOUT) {
-        // Nenhuma alteracao de pixels na tela dentro da janela de amostragem.
-        // Sustenta a cadencia com a textura do ultimo frame capturado se disponivel.
         if (m_lastFrameTexture) {
             *ppTexture = m_lastFrameTexture;
             return true;
@@ -280,8 +335,12 @@ bool DxgiCapture::AcquireNextFrame(ID3D11Texture2D** ppTexture, DWORD timeoutMs,
     }
 
     if (hr == DXGI_ERROR_ACCESS_LOST) {
-        printf("[DxgiCapture] Acesso ao display perdido (mudanca de modo/resolucao). Reinicializando...\n");
-        SetupDuplication(m_forceMirror);
+        printf("[DxgiCapture] Acesso ao display perdido (mudanca de modo Win+P ou resolucao). Reconfigurando...\n");
+        if (SetupDuplication(m_forceMirror)) {
+            if (m_topologyCb) {
+                m_topologyCb(m_width, m_height, m_desktopX, m_desktopY, m_isUsingVirtualDisplay, m_topologyUserData);
+            }
+        }
         return false;
     }
 
@@ -297,10 +356,8 @@ bool DxgiCapture::AcquireNextFrame(ID3D11Texture2D** ppTexture, DWORD timeoutMs,
         return false;
     }
 
-    // Houve atualizacao real de pixels na GPU
     if (pIsNewFrame) *pIsNewFrame = true;
 
-    // Atualiza a textura de retencao com o novo frame em VRAM
     if (m_lastFrameTexture && *ppTexture) {
         m_d3dContext->CopyResource(m_lastFrameTexture, *ppTexture);
     }
@@ -315,4 +372,3 @@ void DxgiCapture::ReleaseFrame() {
         m_hasAcquiredFrame = false;
     }
 }
-

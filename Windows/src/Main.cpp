@@ -17,6 +17,42 @@
 
 volatile bool g_running = true;
 
+struct AppContext {
+    DxgiCapture* capture;
+    H264Encoder* encoder;
+    PointerInjector* injector;
+    ServerHud* serverHud;
+    VideoServer* videoServer;
+    CRITICAL_SECTION captureLock;
+    volatile bool isMirror;
+};
+
+static void DoToggleDisplayMode(AppContext* ctx) {
+    EnterCriticalSection(&ctx->captureLock);
+    ctx->isMirror = !ctx->isMirror;
+    printf("\n[sTab] Alternando Modo de Tela -> %s...\n",
+           ctx->isMirror ? "ESPELHADO (Monitor Primario)" : "ESTENDIDO (Tela Dedicada Blender)");
+
+    ctx->capture->SetupDuplication(ctx->isMirror);
+    int w = ctx->capture->GetWidth();
+    int h = ctx->capture->GetHeight();
+    int x = ctx->capture->GetDesktopX();
+    int y = ctx->capture->GetDesktopY();
+    bool isExt = ctx->capture->IsUsingVirtualDisplay();
+
+    ctx->injector->SetTargetDisplayBounds(x, y, w, h);
+    ctx->encoder->SetDisplayOrigin(x, y);
+
+    if (w != ctx->encoder->GetWidth() || h != ctx->encoder->GetHeight()) {
+        ctx->encoder->Shutdown();
+        ctx->encoder->Initialize(w, h, 60, 20000000);
+    }
+    ctx->encoder->ForceKeyFrame();
+    ctx->serverHud->SetDisplayResolution(w, h, isExt);
+    ctx->serverHud->SetMirrorMode(ctx->isMirror);
+    LeaveCriticalSection(&ctx->captureLock);
+}
+
 BOOL WINAPI ConsoleCtrlHandler(DWORD signal) {
     if (signal == CTRL_C_EVENT || signal == CTRL_CLOSE_EVENT) {
         printf("\n[sTab] Encerrando servidor com seguranca...\n");
@@ -262,6 +298,49 @@ int main(int argc, char* argv[]) {
     VideoServer videoServer(27184);
     videoServer.Start();
 
+    // 3. Inicializa a Janela HUD Gráfica do Servidor
+    ServerHud serverHud;
+    serverHud.SetDisplayResolution(vidWidth, vidHeight, capture.IsUsingVirtualDisplay());
+    serverHud.SetMirrorMode(forceMirror);
+    serverHud.Start();
+
+    // Contexto global compartilhado para sincronização e alternância dinâmica de modo de exibição
+    AppContext appContext;
+    InitializeCriticalSection(&appContext.captureLock);
+    appContext.capture = &capture;
+    appContext.encoder = &encoder;
+    appContext.injector = &injector;
+    appContext.serverHud = &serverHud;
+    appContext.videoServer = &videoServer;
+    appContext.isMirror = forceMirror;
+
+    // Conecta callbacks de alternância de exibição (HUD Win32 + Tablet + Win+P)
+    serverHud.SetDisplayModeToggleCallback([](void* userData) {
+        auto* ctx = (AppContext*)userData;
+        DoToggleDisplayMode(ctx);
+    }, &appContext);
+
+    translator.SetDisplayModeToggleCallback([&appContext]() {
+        DoToggleDisplayMode(&appContext);
+    });
+
+    capture.SetTopologyChangeCallback([](int w, int h, int x, int y, bool isExtended, void* userData) {
+        auto* ctx = (AppContext*)userData;
+        EnterCriticalSection(&ctx->captureLock);
+        printf("[sTab] Topologia Win+P alterada detectada: (%d, %d) [%dx%d] %s\n",
+               x, y, w, h, isExtended ? "ESTENDIDO" : "ESPELHADO");
+        ctx->injector->SetTargetDisplayBounds(x, y, w, h);
+        ctx->encoder->SetDisplayOrigin(x, y);
+        if (w != ctx->encoder->GetWidth() || h != ctx->encoder->GetHeight()) {
+            ctx->encoder->Shutdown();
+            ctx->encoder->Initialize(w, h, 60, 20000000);
+        }
+        ctx->encoder->ForceKeyFrame();
+        ctx->serverHud->SetDisplayResolution(w, h, isExtended);
+        ctx->serverHud->SetMirrorMode(!isExtended);
+        LeaveCriticalSection(&ctx->captureLock);
+    }, &appContext);
+
     // Vincula a saída do encoder ao servidor de vídeo TCP
     encoder.SetPacketCallback([&videoServer](const uint8_t* data, size_t size, bool isKeyFrame) {
         videoServer.SendNalPacket(data, size, isKeyFrame);
@@ -278,11 +357,6 @@ int main(int argc, char* argv[]) {
             encoder.ForceKeyFrame();
         }
     });
-
-    // 3. Inicializa a Janela HUD Gráfica do Servidor
-    ServerHud serverHud;
-    serverHud.SetDisplayResolution(vidWidth, vidHeight, capture.IsUsingVirtualDisplay());
-    serverHud.Start();
 
     // Callbacks de telemetria de entrada para a HUD (Thread-Safe)
     tcpServer.SetInputPacketCallback([&serverHud, &encoder, vidWidth, vidHeight](const InputPacket& pkt) {
@@ -304,6 +378,7 @@ int main(int argc, char* argv[]) {
         printf("[ERRO FATAL] Nao foi possivel iniciar o servidor TCP de telemetria na porta 27183.\n");
         serverHud.Stop();
         injector.Shutdown();
+        DeleteCriticalSection(&appContext.captureLock);
         return 1;
     }
 
@@ -318,9 +393,10 @@ int main(int argc, char* argv[]) {
 
     // Thread de captura de vídeo com taxa variável adaptativa (VFR até 60 FPS)
     HANDLE hCaptureThread = CreateThread(NULL, 0, [](LPVOID param) -> DWORD {
-        auto* cap = (DxgiCapture*)((void**)param)[0];
-        auto* enc = (H264Encoder*)((void**)param)[1];
-        auto* vServ = (VideoServer*)((void**)param)[2];
+        auto* ctx = (AppContext*)param;
+        auto* cap = ctx->capture;
+        auto* enc = ctx->encoder;
+        auto* vServ = ctx->videoServer;
 
         CoInitializeEx(NULL, COINIT_MULTITHREADED);
         HDESK hDesk = OpenInputDesktop(0, FALSE, GENERIC_ALL);
@@ -333,9 +409,9 @@ int main(int argc, char* argv[]) {
 
         while (g_running) {
             if (vServ->IsClientConnected() && cap->IsInitialized() && enc->IsInitialized()) {
+                EnterCriticalSection(&ctx->captureLock);
                 ID3D11Texture2D* pTex = NULL;
                 bool isNewFrame = false;
-                // Amostragem na cadencia de 60 FPS (~16ms)
                 if (cap->AcquireNextFrame(&pTex, 16, &isNewFrame)) {
                     ULONGLONG now = GetTickCount64();
                     bool forceHeartbeat = (now - lastEncodeTick >= 500); // Keep-alive a cada 500ms se estático
@@ -345,9 +421,9 @@ int main(int argc, char* argv[]) {
                         lastEncodeTick = now;
                     }
                     cap->ReleaseFrame();
-                } else {
-                    Sleep(1);
                 }
+                LeaveCriticalSection(&ctx->captureLock);
+                Sleep(isNewFrame ? 1 : 2);
             } else {
                 Sleep(20);
             }
@@ -355,7 +431,7 @@ int main(int argc, char* argv[]) {
 
         CoUninitialize();
         return 0;
-    }, new void*[3]{ &capture, &encoder, &videoServer }, 0, NULL);
+    }, &appContext, 0, NULL);
 
     uint64_t lastTelemetryPackets = 0;
     uint64_t lastVideoFrames = 0;
@@ -401,6 +477,8 @@ int main(int argc, char* argv[]) {
     tcpServer.Stop();
     injector.Shutdown();
     translator.ResetAllInputStates();
+
+    DeleteCriticalSection(&appContext.captureLock);
 
     WSACleanup();
 

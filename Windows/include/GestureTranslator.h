@@ -10,6 +10,7 @@
 #include "Protocol.h"
 
 typedef std::function<void(bool isNavigating)> OnModalNavigationChangedCallback;
+typedef std::function<void()> OnDisplayModeToggleCallback;
 
 /**
  * @brief Tradutor de gestos de toque de dedo e comandos da barra lateral SculptPad.
@@ -37,6 +38,11 @@ public:
     void SetNavigationStateCallback(OnModalNavigationChangedCallback cb) { m_onNavStateChanged = cb; }
 
     /**
+     * @brief Define o callback para alternância de modo de tela (Estendido/Espelhado).
+     */
+    void SetDisplayModeToggleCallback(OnDisplayModeToggleCallback cb) { m_onDisplayModeToggle = cb; }
+
+    /**
      * @brief Libera qualquer tecla ou botão do mouse retido (útil em desconexão do tablet).
      */
     void ResetAllInputStates();
@@ -53,6 +59,7 @@ private:
     void NotifyNavigationState(bool isNavigating);
 
     OnModalNavigationChangedCallback m_onNavStateChanged;
+    OnDisplayModeToggleCallback      m_onDisplayModeToggle;
 
     bool m_isOrbitActive;
     bool m_isPanActive;

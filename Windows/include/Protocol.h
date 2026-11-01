@@ -54,7 +54,8 @@ enum SculptPadAction : uint8_t {
     SCULPTPAD_TRIGGER_RADIUS   = 0x07,  ///< Disparo do slider de raio (tecla 'F')
     SCULPTPAD_TRIGGER_STRENGTH = 0x08,  ///< Disparo do slider de força ('Shift + F')
     SCULPTPAD_TRIGGER_REMESH   = 0x09,  ///< Voxel Remesh ('Ctrl + R')
-    SCULPTPAD_TRIGGER_TRANSFER = 0x0A   ///< Transfer Mode / Alternar Objeto ('Alt + Q')
+    SCULPTPAD_TRIGGER_TRANSFER = 0x0A,  ///< Transfer Mode / Alternar Objeto ('Alt + Q')
+    SCULPTPAD_TOGGLE_DISPLAY_MODE = 0x0B ///< Alterna entre modo Estendido e Espelhado
 };
 
 /**

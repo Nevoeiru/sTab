@@ -127,6 +127,16 @@ class SculptPadLayout(
         attachTooltip(swapHandBtn, "Alternar Lado da Barra")
         addView(swapHandBtn)
 
+        // 1b. Alternar Modo de Tela (Estendido / Espelhado)
+        val displayModeBtn = CompactRailButton(context).apply {
+            layoutParams = createLayoutParams()
+            activeColorHex = "#00E5FF"
+            setIconResource(R.drawable.ic_display_mode)
+            onActionClick = { onActionEmitted(Protocol.SCULPTPAD_TOGGLE_DISPLAY_MODE) }
+        }
+        attachTooltip(displayModeBtn, "Alternar Tela (Estendido / Espelhado)")
+        addView(displayModeBtn)
+
         addView(createDivider())
 
         // 2. Raio do Pincel (Abre submodal)

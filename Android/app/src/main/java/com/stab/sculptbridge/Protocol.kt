@@ -43,6 +43,7 @@ object Protocol {
     const val SCULPTPAD_TRIGGER_STRENGTH: Byte= 0x08  // 'Shift + F'
     const val SCULPTPAD_TRIGGER_REMESH: Byte  = 0x09  // 'Ctrl + R'
     const val SCULPTPAD_TRIGGER_TRANSFER: Byte= 0x0A  // 'Alt + Q'
+    const val SCULPTPAD_TOGGLE_DISPLAY_MODE: Byte = 0x0B // Alterna entre Estendido e Espelhado
 
     // Comandos de Controle de Vídeo
     const val VIDEO_CMD_REQUEST_IDR: Byte     = 0x01  // Solicitação imediata de quadro-chave

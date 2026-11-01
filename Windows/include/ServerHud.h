@@ -7,6 +7,7 @@
 #include <stdint.h>
 #include <atomic>
 #include <string>
+#include "HudLineart.h"
 
 /**
  * @brief Estado de telemetria compartilhado para a HUD do sTab Server.
@@ -28,10 +29,11 @@ struct HudTelemetryState {
     bool isHover = false;
     bool barrelButton = false;
 
-    // Métricas de Vídeo (DXGI 90Hz)
+    // Métricas de Vídeo (DXGI 60Hz)
     int displayWidth = 1920;
     int displayHeight = 1080;
     bool is1610Native = false;
+    bool isMirrorMode = false;  ///< true = Modo Espelhado (Clone), false = Modo Estendido
     float currentFps = 0.0f;
     float bitrateMbps = 0.0f;
     uint64_t totalBytesSent = 0;
@@ -50,6 +52,8 @@ struct HudTelemetryState {
  */
 class ServerHud {
 public:
+    typedef void (*DisplayModeToggleCallback)(void* userData);
+
     ServerHud();
     ~ServerHud();
 
@@ -60,6 +64,8 @@ public:
     void UpdateBlenderStats(const char* brush, float radius, float strength, bool symX, bool symY, bool symZ);
     void UpdateConnectionState(bool clientConnected, bool videoStreaming, bool blenderConnected);
     void SetDisplayResolution(int width, int height, bool is1610);
+    void SetMirrorMode(bool isMirror);
+    void SetDisplayModeToggleCallback(DisplayModeToggleCallback cb, void* userData);
     void Stop();
     bool IsOpen() const;
 
@@ -69,10 +75,6 @@ private:
 
     void WindowThread();
     void Render(HDC hdc);
-    void DrawLineartStylus(HDC hdc, int x, int y);
-    void DrawLineartDisplay(HDC hdc, int x, int y);
-    void DrawLineartBlender(HDC hdc, int x, int y);
-    void DrawOmnitomeIcon(HDC hdc, int x, int y);
 
     HWND m_hWnd;
     HANDLE m_hThread;
@@ -83,10 +85,14 @@ private:
     HudTelemetryState m_state;
     CRITICAL_SECTION m_lock;
 
+    RECT m_modeBtnRect;
+    DisplayModeToggleCallback m_modeToggleCb;
+    void* m_modeToggleUserData;
+
     HFONT m_fontTitle;
     HFONT m_fontSection;
     HFONT m_fontRegular;
     HFONT m_fontBold;
     HFONT m_fontMono;
+    HFONT m_fontSmall;
 };
-

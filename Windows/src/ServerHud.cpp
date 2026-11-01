@@ -14,11 +14,15 @@ ServerHud::ServerHud()
     , m_hReadyEvent(NULL)
     , m_threadId(0)
     , m_running(false)
+    , m_modeBtnRect({0, 0, 0, 0})
+    , m_modeToggleCb(NULL)
+    , m_modeToggleUserData(NULL)
     , m_fontTitle(NULL)
     , m_fontSection(NULL)
     , m_fontRegular(NULL)
     , m_fontBold(NULL)
     , m_fontMono(NULL)
+    , m_fontSmall(NULL)
 {
     InitializeCriticalSection(&m_lock);
 }
@@ -42,7 +46,6 @@ bool ServerHud::Start(HINSTANCE hInstance) {
         return false;
     }
 
-    // Aguarda sincronamente até a janela ser criada e visível no Desktop
     WaitForSingleObject(m_hReadyEvent, 3000);
     CloseHandle(m_hReadyEvent);
     m_hReadyEvent = NULL;
@@ -66,6 +69,20 @@ void ServerHud::Stop() {
 
 bool ServerHud::IsOpen() const {
     return m_running && (m_hWnd != NULL);
+}
+
+void ServerHud::SetDisplayModeToggleCallback(DisplayModeToggleCallback cb, void* userData) {
+    m_modeToggleCb = cb;
+    m_modeToggleUserData = userData;
+}
+
+void ServerHud::SetMirrorMode(bool isMirror) {
+    EnterCriticalSection(&m_lock);
+    m_state.isMirrorMode = isMirror;
+    LeaveCriticalSection(&m_lock);
+    if (m_hWnd) {
+        InvalidateRect(m_hWnd, NULL, FALSE);
+    }
 }
 
 void ServerHud::UpdateTelemetry(const HudTelemetryState& state) {
@@ -140,14 +157,14 @@ LRESULT CALLBACK ServerHud::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM l
     }
 
     switch (msg) {
-        case WM_CREATE: {
-            SetTimer(hWnd, 1, 33, NULL); // ~30 FPS para atualizacao visual suave
+        case WM_CREATE:
+            SetTimer(hWnd, 1, 33, NULL);
             return 0;
-        }
-        case WM_TIMER: {
+
+        case WM_TIMER:
             InvalidateRect(hWnd, NULL, FALSE);
             return 0;
-        }
+
         case WM_PAINT: {
             PAINTSTRUCT ps;
             HDC hdc = BeginPaint(hWnd, &ps);
@@ -155,19 +172,47 @@ LRESULT CALLBACK ServerHud::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM l
             EndPaint(hWnd, &ps);
             return 0;
         }
+
+        case WM_SETCURSOR: {
+            if (self) {
+                POINT pt;
+                GetCursorPos(&pt);
+                ScreenToClient(hWnd, &pt);
+                if (PtInRect(&self->m_modeBtnRect, pt)) {
+                    SetCursor(LoadCursor(NULL, IDC_HAND));
+                    return TRUE;
+                }
+            }
+            break;
+        }
+
+        case WM_LBUTTONUP: {
+            if (self) {
+                POINT pt = { (short)LOWORD(lParam), (short)HIWORD(lParam) };
+                if (PtInRect(&self->m_modeBtnRect, pt)) {
+                    if (self->m_modeToggleCb) {
+                        self->m_modeToggleCb(self->m_modeToggleUserData);
+                    }
+                    InvalidateRect(hWnd, NULL, FALSE);
+                    return 0;
+                }
+            }
+            break;
+        }
+
         case WM_ERASEBKGND:
-            return 1; // Double buffering previne cintilacao
-        case WM_CLOSE: {
+            return 1;
+
+        case WM_CLOSE:
             g_running = false;
             DestroyWindow(hWnd);
             return 0;
-        }
-        case WM_DESTROY: {
+
+        case WM_DESTROY:
             KillTimer(hWnd, 1);
             if (self) self->m_hWnd = NULL;
             PostQuitMessage(0);
             return 0;
-        }
     }
     return DefWindowProcW(hWnd, msg, wParam, lParam);
 }
@@ -186,9 +231,8 @@ void ServerHud::WindowThread() {
 
     RegisterClassExW(&wc);
 
-    int winWidth = 760;
-    int winHeight = 540;
-
+    int winWidth = 780;
+    int winHeight = 550;
     int screenW = GetSystemMetrics(SM_CXSCREEN);
     int screenH = GetSystemMetrics(SM_CYSCREEN);
     int posX = (screenW - winWidth) / 2;
@@ -204,35 +248,22 @@ void ServerHud::WindowThread() {
     );
 
     if (m_hWnd) {
-        // Ativa barra de título escura no Windows 10/11
         BOOL darkMode = TRUE;
         DwmSetWindowAttribute(m_hWnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &darkMode, sizeof(darkMode));
-
         ShowWindow(m_hWnd, SW_SHOWNORMAL);
         UpdateWindow(m_hWnd);
         SetForegroundWindow(m_hWnd);
     }
 
-    if (m_hReadyEvent) {
-        SetEvent(m_hReadyEvent);
-    }
+    if (m_hReadyEvent) SetEvent(m_hReadyEvent);
+    if (!m_hWnd) return;
 
-    if (!m_hWnd) {
-        printf("[ServerHud] Falha ao instanciar HWND da janela grafica (Erro: %lu).\n", GetLastError());
-        return;
-    }
-
-    printf("[ServerHud] Janela HUD em tempo real aberta com sucesso no Windows.\n");
-
-    // Inicializa fontes tipográficas
     m_fontTitle   = CreateFontW(22, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
     m_fontSection = CreateFontW(16, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
     m_fontRegular = CreateFontW(14, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
     m_fontBold    = CreateFontW(14, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
     m_fontMono    = CreateFontW(13, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, FIXED_PITCH, L"Consolas");
-
-    ShowWindow(m_hWnd, SW_SHOWNORMAL);
-    UpdateWindow(m_hWnd);
+    m_fontSmall   = CreateFontW(12, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
 
     MSG msg;
     while (m_running && GetMessageW(&msg, NULL, 0, 0)) {
@@ -245,58 +276,7 @@ void ServerHud::WindowThread() {
     if (m_fontRegular) DeleteObject(m_fontRegular);
     if (m_fontBold)    DeleteObject(m_fontBold);
     if (m_fontMono)    DeleteObject(m_fontMono);
-}
-
-void ServerHud::DrawLineartStylus(HDC hdc, int x, int y) {
-    HPEN pen = CreatePen(PS_SOLID, 2, RGB(0, 229, 255));
-    HGDIOBJ old = SelectObject(hdc, pen);
-    // Corpo da caneta e ponta
-    POINT pts[5] = { {x, y + 16}, {x + 12, y + 4}, {x + 16, y + 8}, {x + 4, y + 20}, {x, y + 16} };
-    Polyline(hdc, pts, 5);
-    MoveToEx(hdc, x, y + 16, NULL); LineTo(hdc, x - 3, y + 19);
-    SelectObject(hdc, old);
-    DeleteObject(pen);
-}
-
-void ServerHud::DrawLineartDisplay(HDC hdc, int x, int y) {
-    HPEN pen = CreatePen(PS_SOLID, 2, RGB(0, 230, 118));
-    HGDIOBJ old = SelectObject(hdc, pen);
-    // Monitor e base
-    Rectangle(hdc, x, y, x + 20, y + 14);
-    MoveToEx(hdc, x + 10, y + 14, NULL); LineTo(hdc, x + 10, y + 18);
-    MoveToEx(hdc, x + 5, y + 18, NULL);  LineTo(hdc, x + 15, y + 18);
-    SelectObject(hdc, old);
-    DeleteObject(pen);
-}
-
-void ServerHud::DrawLineartBlender(HDC hdc, int x, int y) {
-    HPEN pen = CreatePen(PS_SOLID, 2, RGB(255, 179, 0));
-    HGDIOBJ old = SelectObject(hdc, pen);
-    // Cubo isometrico
-    MoveToEx(hdc, x + 10, y, NULL);      LineTo(hdc, x + 20, y + 5);
-    LineTo(hdc, x + 10, y + 10);         LineTo(hdc, x, y + 5);
-    LineTo(hdc, x + 10, y);
-    MoveToEx(hdc, x, y + 5, NULL);       LineTo(hdc, x, y + 15);
-    LineTo(hdc, x + 10, y + 20);         LineTo(hdc, x + 20, y + 15);
-    LineTo(hdc, x + 20, y + 5);
-    MoveToEx(hdc, x + 10, y + 10, NULL); LineTo(hdc, x + 10, y + 20);
-    SelectObject(hdc, old);
-    DeleteObject(pen);
-}
-
-void ServerHud::DrawOmnitomeIcon(HDC hdc, int x, int y) {
-    HPEN pen = CreatePen(PS_SOLID, 2, RGB(0, 229, 255));
-    HGDIOBJ old = SelectObject(hdc, pen);
-    // Emblema geometrico Omnitome (hexagono com prisma central, sem estrelas)
-    POINT hex[7] = {
-        {x + 10, y}, {x + 20, y + 5}, {x + 20, y + 15},
-        {x + 10, y + 20}, {x, y + 15}, {x, y + 5}, {x + 10, y}
-    };
-    Polyline(hdc, hex, 7);
-    MoveToEx(hdc, x + 10, y, NULL);      LineTo(hdc, x + 10, y + 20);
-    MoveToEx(hdc, x, y + 10, NULL);      LineTo(hdc, x + 20, y + 10);
-    SelectObject(hdc, old);
-    DeleteObject(pen);
+    if (m_fontSmall)   DeleteObject(m_fontSmall);
 }
 
 void ServerHud::Render(HDC hdc) {
@@ -305,12 +285,10 @@ void ServerHud::Render(HDC hdc) {
     int width = rc.right - rc.left;
     int height = rc.bottom - rc.top;
 
-    // Buffer secundário
     HDC memDC = CreateCompatibleDC(hdc);
     HBITMAP memBmp = CreateCompatibleBitmap(hdc, width, height);
     HGDIOBJ oldBmp = SelectObject(memDC, memBmp);
 
-    // 1. Fundo dark principal
     HBRUSH bgBrush = CreateSolidBrush(RGB(18, 19, 23));
     FillRect(memDC, &rc, bgBrush);
     DeleteObject(bgBrush);
@@ -322,8 +300,8 @@ void ServerHud::Render(HDC hdc) {
 
     SetBkMode(memDC, TRANSPARENT);
 
-    // 2. Cabeçalho
-    DrawOmnitomeIcon(memDC, 24, 20);
+    // 1. Cabeçalho com Emblema Omnitome
+    HudLineart::DrawOmnitomeEmblem(memDC, 24, 20);
 
     SelectObject(memDC, m_fontTitle);
     SetTextColor(memDC, RGB(236, 239, 244));
@@ -331,7 +309,7 @@ void ServerHud::Render(HDC hdc) {
 
     SelectObject(memDC, m_fontRegular);
     SetTextColor(memDC, RGB(144, 155, 172));
-    TextOutW(memDC, 54, 44, L"Galaxy Tab S9 FE+ como Mesa Digitalizadora 90Hz no Blender 3D", 61);
+    TextOutW(memDC, 54, 44, L"Galaxy Tab S9 FE+ como Mesa Digitalizadora no Blender 3D", 56);
 
     // Badge de Conexão Geral
     RECT badgeRc = { width - 260, 20, width - 24, 48 };
@@ -361,12 +339,11 @@ void ServerHud::Render(HDC hdc) {
     SelectObject(memDC, oldPen);
     DeleteObject(divPen);
 
-    // 3. Grid de Cartões de Telemetria (3 colunas/áreas)
+    // 2. Grid de Cartões de Telemetria (3 colunas)
     int cardY = 90;
-    int cardH = 260;
+    int cardH = 275;
     int cardW = (width - 48 - 32) / 3;
 
-    // Helper para desenhar cartão com borda lineart
     auto DrawCardBase = [&](int x, int y, int w, int h, const wchar_t* title) {
         HBRUSH cardBg = CreateSolidBrush(RGB(26, 29, 36));
         HPEN cardBorder = CreatePen(PS_SOLID, 1, RGB(46, 52, 64));
@@ -386,7 +363,7 @@ void ServerHud::Render(HDC hdc) {
     // --- CARTÃO 1: S-Pen 240Hz & Windows Ink ---
     int c1X = 24;
     DrawCardBase(c1X, cardY, cardW, cardH, L"S-Pen 240Hz");
-    DrawLineartStylus(memDC, c1X + 14, cardY + 12);
+    HudLineart::DrawStylus(memDC, c1X + 14, cardY + 12);
 
     SelectObject(memDC, m_fontRegular);
     SetTextColor(memDC, RGB(144, 155, 172));
@@ -408,7 +385,6 @@ void ServerHud::Render(HDC hdc) {
     SetTextColor(memDC, RGB(144, 155, 172));
     TextOutW(memDC, c1X + 16, cardY + 100, L"Pressão (4096 níveis):", 22);
 
-    // Barra de Pressão
     int barX = c1X + 16;
     int barY = cardY + 122;
     int barW = cardW - 32;
@@ -444,55 +420,75 @@ void ServerHud::Render(HDC hdc) {
     swprintf_s(barrelBuf, L"Botão S-Pen: %ls", s.barrelButton ? L"ATIVO (RMB)" : L"Normal");
     TextOutW(memDC, c1X + 16, cardY + 220, barrelBuf, (int)wcslen(barrelBuf));
 
-    // --- CARTÃO 2: Vídeo 60Hz & Display ---
+    // --- CARTÃO 2: Vídeo 60Hz & Display Interativo ---
     int c2X = c1X + cardW + 16;
-    DrawCardBase(c2X, cardY, cardW, cardH, L"Vídeo DXGI 60Hz (VFR)");
-    DrawLineartDisplay(memDC, c2X + 14, cardY + 12);
+    DrawCardBase(c2X, cardY, cardW, cardH, L"Vídeo DXGI 60Hz");
+    HudLineart::DrawDisplay(memDC, c2X + 14, cardY + 12);
 
     SelectObject(memDC, m_fontRegular);
     SetTextColor(memDC, RGB(144, 155, 172));
-    TextOutW(memDC, c2X + 16, cardY + 50, L"Modo de Tela:", 13);
+    TextOutW(memDC, c2X + 16, cardY + 48, L"Modo de Tela (Clique p/ Alternar):", 34);
+
+    // Botão Interativo de Modo de Tela (Estendido vs Espelhado)
+    int btnX = c2X + 14;
+    int btnY = cardY + 68;
+    int btnW = cardW - 28;
+    int btnH = 46;
+    m_modeBtnRect = { btnX, btnY, btnX + btnW, btnY + btnH };
+
+    COLORREF btnBgColor = s.isMirrorMode ? RGB(14, 42, 56) : RGB(12, 45, 28);
+    COLORREF btnBorderColor = s.isMirrorMode ? RGB(0, 229, 255) : RGB(0, 230, 118);
+    HBRUSH btnBg = CreateSolidBrush(btnBgColor);
+    HPEN btnBorder = CreatePen(PS_SOLID, 2, btnBorderColor);
+    HGDIOBJ oP = SelectObject(memDC, btnBorder);
+    HGDIOBJ oB = SelectObject(memDC, btnBg);
+    RoundRect(memDC, btnX, btnY, btnX + btnW, btnY + btnH, 8, 8);
+    SelectObject(memDC, oP);
+    SelectObject(memDC, oB);
+    DeleteObject(btnBorder);
+    DeleteObject(btnBg);
 
     SelectObject(memDC, m_fontBold);
-    if (s.is1610Native) {
-        SetTextColor(memDC, RGB(0, 230, 118));
-        TextOutW(memDC, c2X + 16, cardY + 70, L"Estendido (1920x1080)", 21);
+    SetTextColor(memDC, btnBorderColor);
+    if (s.isMirrorMode) {
+        TextOutW(memDC, btnX + 10, btnY + 6, L"\u25C8 MODO: ESPELHADO", 17);
     } else {
-        SetTextColor(memDC, RGB(0, 229, 255));
-        wchar_t resBuf[64];
-        swprintf_s(resBuf, L"%dx%d", s.displayWidth, s.displayHeight);
-        TextOutW(memDC, c2X + 16, cardY + 70, resBuf, (int)wcslen(resBuf));
+        TextOutW(memDC, btnX + 10, btnY + 6, L"\u25A6 MODO: ESTENDIDO", 17);
     }
 
-    SelectObject(memDC, m_fontRegular);
-    SetTextColor(memDC, RGB(144, 155, 172));
-    TextOutW(memDC, c2X + 16, cardY + 100, L"Desempenho de Streaming:", 25);
+    SelectObject(memDC, m_fontSmall);
+    SetTextColor(memDC, RGB(180, 195, 215));
+    if (s.isMirrorMode) {
+        TextOutW(memDC, btnX + 10, btnY + 26, L"Duplicando PC (Clique p/ Estender)", 35);
+    } else {
+        TextOutW(memDC, btnX + 10, btnY + 26, L"Tela Exclusiva (Clique p/ Espelhar)", 36);
+    }
 
     SelectObject(memDC, m_fontBold);
     wchar_t fpsBuf[64];
-    swprintf_s(fpsBuf, L"Taxa: ~%.0f FPS (Adaptativo)", s.currentFps);
+    swprintf_s(fpsBuf, L"Taxa: ~%.0f FPS (VFR Dinamico)", s.currentFps);
     SetTextColor(memDC, RGB(236, 239, 244));
-    TextOutW(memDC, c2X + 16, cardY + 122, fpsBuf, (int)wcslen(fpsBuf));
+    TextOutW(memDC, c2X + 16, cardY + 128, fpsBuf, (int)wcslen(fpsBuf));
 
     SelectObject(memDC, m_fontMono);
     wchar_t brBuf[64];
-    swprintf_s(brBuf, L"Banda: ~%.1f Mbps", s.bitrateMbps);
-    TextOutW(memDC, c2X + 16, cardY + 146, brBuf, (int)wcslen(brBuf));
+    swprintf_s(brBuf, L"Banda: ~%.1f Mbps (%dx%d)", s.bitrateMbps, s.displayWidth, s.displayHeight);
+    TextOutW(memDC, c2X + 16, cardY + 152, brBuf, (int)wcslen(brBuf));
 
     SelectObject(memDC, m_fontRegular);
     SetTextColor(memDC, RGB(144, 155, 172));
-    TextOutW(memDC, c2X + 16, cardY + 175, L"Túneis USB Reversos:", 20);
+    TextOutW(memDC, c2X + 16, cardY + 182, L"Túneis USB Reversos:", 20);
 
     SelectObject(memDC, m_fontMono);
     SetTextColor(memDC, RGB(0, 230, 118));
-    TextOutW(memDC, c2X + 16, cardY + 195, L"\u25CF 27183 [Input S-Pen]", 21);
-    TextOutW(memDC, c2X + 16, cardY + 215, L"\u25CF 27184 [Vídeo 60 FPS VFR]", 26);
-    TextOutW(memDC, c2X + 16, cardY + 235, L"\u25CF 27185 [Companion]", 19);
+    TextOutW(memDC, c2X + 16, cardY + 204, L"\u25CF 27183 [Input S-Pen]", 21);
+    TextOutW(memDC, c2X + 16, cardY + 224, L"\u25CF 27184 [Vídeo 60 FPS VFR]", 26);
+    TextOutW(memDC, c2X + 16, cardY + 244, L"\u25CF 27185 [Companion]", 19);
 
     // --- CARTÃO 3: Blender Companion ---
     int c3X = c2X + cardW + 16;
     DrawCardBase(c3X, cardY, cardW, cardH, L"Blender Sculpt");
-    DrawLineartBlender(memDC, c3X + 14, cardY + 12);
+    HudLineart::DrawBlenderCube(memDC, c3X + 14, cardY + 12);
 
     SelectObject(memDC, m_fontRegular);
     SetTextColor(memDC, RGB(144, 155, 172));
@@ -539,25 +535,23 @@ void ServerHud::Render(HDC hdc) {
     SetTextColor(memDC, RGB(144, 155, 172));
     TextOutW(memDC, c3X + 16, cardY + 225, L"Atalho: Alt+Z (Remesh)", 22);
 
-    // 4. Rodapé Informativo
+    // 3. Rodapé Informativo
     int footY = cardY + cardH + 18;
     HBRUSH footBg = CreateSolidBrush(RGB(22, 24, 30));
-    RECT footRc = { 24, footY, width - 24, height - 20 };
+    RECT footRc = { 24, footY, width - 24, height - 16 };
     FillRect(memDC, &footRc, footBg);
     DeleteObject(footBg);
 
     SelectObject(memDC, m_fontRegular);
     SetTextColor(memDC, RGB(144, 155, 172));
-    TextOutW(memDC, 36, footY + 10,
-             L"Dica: Para mover o Blender para a tela do tablet, pressione: Windows + Shift + Seta Direita.", 92);
-    TextOutW(memDC, 36, footY + 30,
-             L"O servidor sTab pode permanecer aberto ou minimizado enquanto você esculpe no Blender.", 87);
+    TextOutW(memDC, 36, footY + 8,
+             L"Dica: Alterne o modo com 1 clique no botao acima, pelo icone na barra do tablet, ou pressione Win+P.", 100);
+    TextOutW(memDC, 36, footY + 28,
+             L"No modo Estendido, envie o Blender para o tablet com: Windows + Shift + Seta Direita.", 84);
 
-    // Copia para tela
     BitBlt(hdc, 0, 0, width, height, memDC, 0, 0, SRCCOPY);
 
     SelectObject(memDC, oldBmp);
     DeleteObject(memBmp);
     DeleteDC(memDC);
 }
-
