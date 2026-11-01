@@ -9,7 +9,7 @@ if exist "%TOOLCHAIN_BIN%\g++.exe" (
 )
 
 echo ========================================================
-echo   [sTab] Compilando Servidor Windows em C++...
+echo   [sTab] Compilando Servidor Windows em C++ (Input + Video 90Hz)...
 echo ========================================================
 
 if not exist "%SCRIPT_DIR%bin" mkdir "%SCRIPT_DIR%bin"
@@ -20,8 +20,11 @@ g++ -std=c++17 -O3 -Wall -Wextra -I"%SCRIPT_DIR%include" ^
     "%SCRIPT_DIR%src\PointerInjector.cpp" ^
     "%SCRIPT_DIR%src\GestureTranslator.cpp" ^
     "%SCRIPT_DIR%src\TcpServer.cpp" ^
+    "%SCRIPT_DIR%src\DxgiCapture.cpp" ^
+    "%SCRIPT_DIR%src\H264Encoder.cpp" ^
+    "%SCRIPT_DIR%src\VideoServer.cpp" ^
     -o "%SCRIPT_DIR%bin\sTab_server.exe" ^
-    -lws2_32 -luser32 -static -s
+    -lws2_32 -luser32 -ld3d11 -ldxgi -lmfplat -lmfuuid -lole32 -loleaut32 -static -s
 
 if %ERRORLEVEL% equ 0 (
     echo.
@@ -37,4 +40,3 @@ if %ERRORLEVEL% equ 0 (
 )
 
 endlocal
-

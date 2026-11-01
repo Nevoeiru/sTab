@@ -48,6 +48,22 @@ object Protocol {
     const val VIDEO_CMD_REQUEST_IDR: Byte     = 0x01  // Solicitação imediata de quadro-chave
 
     const val PACKET_SIZE: Int                = 16
+
+    /**
+     * Gera um pacote de controle de vídeo de 16 bytes para solicitar IDR frame ao Windows.
+     */
+    fun createVideoControlPacket(command: Byte): InputPacket {
+        return InputPacket(
+            packetType = PACKET_TYPE_VIDEO_CONTROL,
+            flags = FLAG_NONE,
+            x = 0,
+            y = 0,
+            pressure = 0,
+            tiltX = 0,
+            tiltY = 0,
+            payload = command.toInt() and 0xFF
+        )
+    }
 }
 
 /**

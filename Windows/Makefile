@@ -1,13 +1,13 @@
 CXX ?= ../dependencias/w64devkit/bin/g++
 CXXFLAGS = -std=c++17 -O3 -Wall -Wextra -Iinclude
-LDFLAGS = -lws2_32 -luser32 -static -s
+LDFLAGS = -lws2_32 -luser32 -ld3d11 -ldxgi -lmfplat -lmfuuid -lole32 -loleaut32 -static -s
 
 SRCDIR = src
 INCDIR = include
 OBJDIR = obj
 BINDIR = bin
 
-SOURCES = $(SRCDIR)/Main.cpp $(SRCDIR)/PointerInjector.cpp $(SRCDIR)/GestureTranslator.cpp $(SRCDIR)/TcpServer.cpp
+SOURCES = $(SRCDIR)/Main.cpp $(SRCDIR)/PointerInjector.cpp $(SRCDIR)/GestureTranslator.cpp $(SRCDIR)/TcpServer.cpp $(SRCDIR)/DxgiCapture.cpp $(SRCDIR)/H264Encoder.cpp $(SRCDIR)/VideoServer.cpp
 OBJECTS = $(patsubst $(SRCDIR)/%.cpp,$(OBJDIR)/%.o,$(SOURCES))
 TARGET = $(BINDIR)/sTab_server.exe
 

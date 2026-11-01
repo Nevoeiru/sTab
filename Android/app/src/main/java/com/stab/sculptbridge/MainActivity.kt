@@ -6,25 +6,33 @@ import android.os.Build
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.MotionEvent
+import android.view.Surface
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.Toast
 import com.stab.sculptbridge.ui.RadiusOverlayView
 import com.stab.sculptbridge.ui.SculptPadLayout
+import com.stab.sculptbridge.video.VideoDecoder
+import com.stab.sculptbridge.video.VideoPacketReceiver
+import com.stab.sculptbridge.video.VideoSurfaceView
 
 /**
  * Activity Principal do sTab (SculptBridge) no Galaxy Tab S9 FE+.
- * Integra a View de captura 3D a 90Hz com o painel lateral ergonômico SculptPad.
+ * Integra a View de captura 3D a 90Hz, streaming de vídeo H.264 direto da GPU e o painel SculptPad.
  */
 class MainActivity : Activity() {
 
     private lateinit var usbClient: UsbSocketClient
     private lateinit var oneUiShield: OneUiShield
     private lateinit var dispatcher: SculptTouchDispatcher
+    private lateinit var videoSurfaceView: VideoSurfaceView
     private lateinit var canvasView: SculptCanvasView
     private lateinit var radiusOverlay: RadiusOverlayView
     private lateinit var sculptPad: SculptPadLayout
+
+    private var videoDecoder: VideoDecoder? = null
+    private var videoReceiver: VideoPacketReceiver? = null
 
     private lateinit var rootContainer: LinearLayout
     private lateinit var viewportContainer: FrameLayout
@@ -43,7 +51,20 @@ class MainActivity : Activity() {
         usbClient = UsbSocketClient()
         dispatcher = SculptTouchDispatcher(usbClient)
 
-        // 4. Cria a View principal de desenho e a camada de sobreposição de raio
+        // 4. Cria a Viewport: Superfície de Vídeo (Fundo) + Canvas de Captura 90Hz + Overlay de Raio
+        videoSurfaceView = VideoSurfaceView(this).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+            onSurfaceReady = { surface, width, height ->
+                setupVideoPipeline(surface, width, height)
+            }
+            onSurfaceDestroyed = {
+                tearDownVideoPipeline()
+            }
+        }
+
         canvasView = SculptCanvasView(this).apply {
             this.dispatcher = this@MainActivity.dispatcher
             layoutParams = FrameLayout.LayoutParams(
@@ -62,6 +83,7 @@ class MainActivity : Activity() {
 
         viewportContainer = FrameLayout(this).apply {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f)
+            addView(videoSurfaceView)
             addView(canvasView)
             addView(radiusOverlay)
         }
@@ -154,14 +176,53 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun setupVideoPipeline(surface: Surface, width: Int, height: Int) {
+        tearDownVideoPipeline()
+
+        val decoder = VideoDecoder(
+            surface = surface,
+            width = width,
+            height = height,
+            onIdrNeeded = {
+                requestKeyFrameFromHost()
+            }
+        )
+        decoder.start()
+        videoDecoder = decoder
+
+        val receiver = VideoPacketReceiver(
+            onPacketReceived = { nalData, size ->
+                videoDecoder?.decodeNal(nalData, 0, size)
+            }
+        )
+        receiver.start()
+        videoReceiver = receiver
+
+        // Solicita imediatamente um quadro-chave inicial para sincronizar o visor
+        requestKeyFrameFromHost()
+    }
+
+    private fun tearDownVideoPipeline() {
+        videoReceiver?.stop()
+        videoReceiver = null
+        videoDecoder?.stop()
+        videoDecoder = null
+    }
+
+    private fun requestKeyFrameFromHost() {
+        usbClient.sendPacket(Protocol.createVideoControlPacket(Protocol.VIDEO_CMD_REQUEST_IDR))
+    }
+
     override fun onResume() {
         super.onResume()
         oneUiShield.setupImmersiveMode(window.decorView)
         usbClient.start()
+        videoReceiver?.start()
     }
 
     override fun onPause() {
         super.onPause()
+        videoReceiver?.stop()
         usbClient.stop()
     }
 
