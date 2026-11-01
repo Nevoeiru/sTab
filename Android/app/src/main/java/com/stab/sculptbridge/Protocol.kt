@@ -44,6 +44,19 @@ object Protocol {
     const val SCULPTPAD_TRIGGER_REMESH: Byte  = 0x09  // 'Ctrl + R'
     const val SCULPTPAD_TRIGGER_TRANSFER: Byte= 0x0A  // 'Alt + Q'
     const val SCULPTPAD_TOGGLE_DISPLAY_MODE: Byte = 0x0B // Alterna entre Estendido e Espelhado
+    const val SCULPTPAD_KEY_A: Byte           = 0x10  // Tecla 'A' (Mask Edit)
+    const val SCULPTPAD_KEY_F: Byte           = 0x11  // Tecla 'F' (Tamanho do Pincel)
+    const val SCULPTPAD_KEY_Z: Byte           = 0x12  // Tecla 'Z' (Modo de Render / Shading Pie)
+    const val SCULPTPAD_KEY_N: Byte           = 0x13  // Tecla 'N' (Transformações)
+    const val SCULPTPAD_KEY_COMMA: Byte       = 0x14  // Tecla '<' (Orientação)
+    const val SCULPTPAD_KEY_PERIOD: Byte      = 0x15  // Tecla '>' (Pivô)
+    const val SCULPTPAD_KEY_QUOTE: Byte       = 0x16  // Tecla '\'' (Visualizações)
+    const val SCULPTPAD_KEY_TAB: Byte         = 0x17  // Tecla 'Tab' (Edit / Sculpt)
+    const val SCULPTPAD_COMBO_CTRL_S: Byte    = 0x18  // 'Ctrl + S' (Salvar)
+    const val SCULPTPAD_COMBO_SHIFT_Z: Byte   = 0x19  // 'Shift + Z' (Arestas / Wireframe)
+    const val SCULPTPAD_COMBO_SHIFT_F: Byte   = 0x1A  // 'Shift + F' (Força do Pincel)
+    const val SCULPTPAD_UNDO: Byte            = 0x1B  // 'Ctrl + Z' (Desfazer)
+    const val SCULPTPAD_REDO: Byte            = 0x1C  // 'Ctrl + Shift + Z' (Refazer)
 
     // Comandos de Controle de Vídeo
     const val VIDEO_CMD_REQUEST_IDR: Byte     = 0x01  // Solicitação imediata de quadro-chave

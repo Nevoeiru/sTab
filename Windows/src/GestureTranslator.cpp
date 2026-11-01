@@ -53,29 +53,51 @@ void GestureTranslator::SendMouseWheel(int wheelDelta) {
 void GestureTranslator::SendKey(WORD vkCode, bool down) {
     INPUT input = {};
     input.type = INPUT_KEYBOARD;
+
+    // Normaliza modificadores genéricos para a variante esquerda (padrão Blender)
+    if (vkCode == VK_SHIFT) vkCode = VK_LSHIFT;
+    if (vkCode == VK_CONTROL) vkCode = VK_LCONTROL;
+    if (vkCode == VK_MENU) vkCode = VK_LMENU;
+
     input.ki.wVk = vkCode;
+    input.ki.wScan = (WORD)MapVirtualKeyW(vkCode, MAPVK_VK_TO_VSC);
     input.ki.dwFlags = down ? 0 : KEYEVENTF_KEYUP;
+
+    if (vkCode == VK_RCONTROL || vkCode == VK_RMENU) {
+        input.ki.dwFlags |= KEYEVENTF_EXTENDEDKEY;
+    }
+
     SendInput(1, &input, sizeof(INPUT));
 }
 
+void GestureTranslator::TriggerSingleKey(WORD vk) {
+    SendKey(vk, true);
+    Sleep(25);
+    SendKey(vk, false);
+}
+
 void GestureTranslator::TriggerKeyCombination(WORD vk1, WORD vk2) {
-    INPUT inputs[4] = {};
-    inputs[0].type = INPUT_KEYBOARD; inputs[0].ki.wVk = vk1;
-    inputs[1].type = INPUT_KEYBOARD; inputs[1].ki.wVk = vk2;
-    inputs[2].type = INPUT_KEYBOARD; inputs[2].ki.wVk = vk2; inputs[2].ki.dwFlags = KEYEVENTF_KEYUP;
-    inputs[3].type = INPUT_KEYBOARD; inputs[3].ki.wVk = vk1; inputs[3].ki.dwFlags = KEYEVENTF_KEYUP;
-    SendInput(4, inputs, sizeof(INPUT));
+    SendKey(vk1, true);
+    Sleep(25);
+    SendKey(vk2, true);
+    Sleep(25);
+    SendKey(vk2, false);
+    Sleep(15);
+    SendKey(vk1, false);
 }
 
 void GestureTranslator::TriggerKeyCombination(WORD vk1, WORD vk2, WORD vk3) {
-    INPUT inputs[6] = {};
-    inputs[0].type = INPUT_KEYBOARD; inputs[0].ki.wVk = vk1;
-    inputs[1].type = INPUT_KEYBOARD; inputs[1].ki.wVk = vk2;
-    inputs[2].type = INPUT_KEYBOARD; inputs[2].ki.wVk = vk3;
-    inputs[3].type = INPUT_KEYBOARD; inputs[3].ki.wVk = vk3; inputs[3].ki.dwFlags = KEYEVENTF_KEYUP;
-    inputs[4].type = INPUT_KEYBOARD; inputs[4].ki.wVk = vk2; inputs[4].ki.dwFlags = KEYEVENTF_KEYUP;
-    inputs[5].type = INPUT_KEYBOARD; inputs[5].ki.wVk = vk1; inputs[5].ki.dwFlags = KEYEVENTF_KEYUP;
-    SendInput(6, inputs, sizeof(INPUT));
+    SendKey(vk1, true);
+    Sleep(15);
+    SendKey(vk2, true);
+    Sleep(25);
+    SendKey(vk3, true);
+    Sleep(25);
+    SendKey(vk3, false);
+    Sleep(15);
+    SendKey(vk2, false);
+    Sleep(15);
+    SendKey(vk1, false);
 }
 
 void GestureTranslator::ProcessTouchGesture(const InputPacket& packet) {
@@ -159,70 +181,101 @@ void GestureTranslator::ProcessSculptPadAction(const InputPacket& packet) {
 
     switch (action) {
         case SCULPTPAD_HOLD_SHIFT_DOWN:
-            if (!m_isShiftHeld) {
-                SendKey(VK_SHIFT, true);
-                m_isShiftHeld = true;
-            }
+            SendKey(VK_LSHIFT, true);
+            m_isShiftHeld = true;
             break;
 
         case SCULPTPAD_HOLD_SHIFT_UP:
-            if (m_isShiftHeld) {
-                SendKey(VK_SHIFT, false);
-                m_isShiftHeld = false;
-            }
+            SendKey(VK_LSHIFT, false);
+            m_isShiftHeld = false;
             break;
 
         case SCULPTPAD_HOLD_CTRL_DOWN:
-            if (!m_isCtrlHeld) {
-                SendKey(VK_CONTROL, true);
-                m_isCtrlHeld = true;
-            }
+            SendKey(VK_LCONTROL, true);
+            m_isCtrlHeld = true;
             break;
 
         case SCULPTPAD_HOLD_CTRL_UP:
-            if (m_isCtrlHeld) {
-                SendKey(VK_CONTROL, false);
-                m_isCtrlHeld = false;
-            }
+            SendKey(VK_LCONTROL, false);
+            m_isCtrlHeld = false;
             break;
 
         case SCULPTPAD_HOLD_ALT_DOWN:
-            if (!m_isAltHeld) {
-                SendKey(VK_MENU, true);
-                m_isAltHeld = true;
-            }
+            SendKey(VK_LMENU, true);
+            m_isAltHeld = true;
             break;
 
         case SCULPTPAD_HOLD_ALT_UP:
-            if (m_isAltHeld) {
-                SendKey(VK_MENU, false);
-                m_isAltHeld = false;
-            }
+            SendKey(VK_LMENU, false);
+            m_isAltHeld = false;
             break;
 
+        // Atalhos de letra simples (botões de clique rápido)
         case SCULPTPAD_TRIGGER_RADIUS:
-            // Dispara tecla 'F' para ajuste de raio
-            SendKey('F', true);
-            SendKey('F', false);
+        case SCULPTPAD_KEY_F:
+            TriggerSingleKey('F');
+            break;
+
+        case SCULPTPAD_KEY_A:
+            TriggerSingleKey('A');
+            break;
+
+        case SCULPTPAD_KEY_Z:
+            TriggerSingleKey('Z');
+            break;
+
+        case SCULPTPAD_KEY_N:
+            TriggerSingleKey('N');
+            break;
+
+        case SCULPTPAD_KEY_COMMA:
+            TriggerSingleKey(VK_OEM_COMMA);
+            break;
+
+        case SCULPTPAD_KEY_PERIOD:
+            TriggerSingleKey(VK_OEM_PERIOD);
+            break;
+
+        case SCULPTPAD_KEY_QUOTE:
+            TriggerSingleKey(VK_OEM_7);
+            break;
+
+        case SCULPTPAD_KEY_TAB:
+            TriggerSingleKey(VK_TAB);
+            break;
+
+        // Combinações de teclas simples
+        case SCULPTPAD_COMBO_CTRL_S:
+            TriggerKeyCombination(VK_CONTROL, 'S');
+            break;
+
+        case SCULPTPAD_COMBO_SHIFT_Z:
+            TriggerKeyCombination(VK_SHIFT, 'Z');
             break;
 
         case SCULPTPAD_TRIGGER_STRENGTH:
-            // Dispara 'Shift + F' para ajuste de força
+        case SCULPTPAD_COMBO_SHIFT_F:
             TriggerKeyCombination(VK_SHIFT, 'F');
             break;
 
+        // Histórico de escultura (Undo / Redo)
+        case SCULPTPAD_UNDO:
+            TriggerKeyCombination(VK_CONTROL, 'Z');
+            break;
+
+        case SCULPTPAD_REDO:
+            TriggerKeyCombination(VK_CONTROL, VK_SHIFT, 'Z');
+            break;
+
         case SCULPTPAD_TRIGGER_REMESH:
-            // Dispara 'Ctrl + R' para Voxel Remesh
             TriggerKeyCombination(VK_CONTROL, 'R');
             break;
 
         case SCULPTPAD_TRIGGER_TRANSFER:
-            // Dispara 'Alt + Q' para alternar objeto / subtool no Sculpt Mode
             TriggerKeyCombination(VK_MENU, 'Q');
             break;
 
         case SCULPTPAD_TOGGLE_DISPLAY_MODE:
-            // Alterna entre modo Estendido e Espelhado
             if (m_onDisplayModeToggle) {
                 m_onDisplayModeToggle();
             }

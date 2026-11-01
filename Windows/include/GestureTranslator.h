@@ -54,6 +54,7 @@ private:
     void SendMouseMoveDelta(int dx, int dy);
     void SendMouseWheel(int wheelDelta);
     void SendKey(WORD vkCode, bool down);
+    void TriggerSingleKey(WORD vkCode);
     void TriggerKeyCombination(WORD vk1, WORD vk2);
     void TriggerKeyCombination(WORD vk1, WORD vk2, WORD vk3);
     void NotifyNavigationState(bool isNavigating);

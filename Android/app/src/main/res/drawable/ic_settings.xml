@@ -1,0 +1,21 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Círculo Central Lineart -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.8"
+        android:fillColor="#00000000"
+        android:pathData="M12,12m-3,0a3,3 0 1,0 6,0a3,3 0 1,0 -6,0" />
+    <!-- Dentes da Engrenagem Lineart Mecânica -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M19.4,13a7.8,7.8 0 0,0 0.1,-1 7.8,7.8 0 0,0 -0.1,-1l2.1,-1.6a0.5,0.5 0 0,0 0.1,-0.6l-2,-3.5a0.5,0.5 0 0,0 -0.6,-0.2l-2.5,1a7.9,7.9 0 0,0 -1.7,-1l-0.4,-2.6a0.5,0.5 0 0,0 -0.5,-0.4l-4,0a0.5,0.5 0 0,0 -0.5,0.4l-0.4,2.6a7.9,7.9 0 0,0 -1.7,1l-2.5,-1a0.5,0.5 0 0,0 -0.6,0.2l-2,3.5a0.5,0.5 0 0,0 0.1,0.6l2.1,1.6a7.8,7.8 0 0,0 -0.1,1 7.8,7.8 0 0,0 0.1,1l-2.1,1.6a0.5,0.5 0 0,0 -0.1,0.6l2,3.5a0.5,0.5 0 0,0 0.6,0.2l2.5,-1a7.9,7.9 0 0,0 1.7,1l0.4,2.6a0.5,0.5 0 0,0 0.5,0.4l4,0a0.5,0.5 0 0,0 0.5,-0.4l0.4,-2.6a7.9,7.9 0 0,0 1.7,-1l2.5,1a0.5,0.5 0 0,0 0.6,-0.2l2,-3.5a0.5,0.5 0 0,0 -0.1,-0.6l-2.1,-1.6z" />
+</vector>
+

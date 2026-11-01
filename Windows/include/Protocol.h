@@ -55,7 +55,20 @@ enum SculptPadAction : uint8_t {
     SCULPTPAD_TRIGGER_STRENGTH = 0x08,  ///< Disparo do slider de força ('Shift + F')
     SCULPTPAD_TRIGGER_REMESH   = 0x09,  ///< Voxel Remesh ('Ctrl + R')
     SCULPTPAD_TRIGGER_TRANSFER = 0x0A,  ///< Transfer Mode / Alternar Objeto ('Alt + Q')
-    SCULPTPAD_TOGGLE_DISPLAY_MODE = 0x0B ///< Alterna entre modo Estendido e Espelhado
+    SCULPTPAD_TOGGLE_DISPLAY_MODE = 0x0B, ///< Alterna entre modo Estendido e Espelhado
+    SCULPTPAD_KEY_A            = 0x10,  ///< Tecla 'A' (Mask Edit / Select)
+    SCULPTPAD_KEY_F            = 0x11,  ///< Tecla 'F' (Tamanho do Pincel)
+    SCULPTPAD_KEY_Z            = 0x12,  ///< Tecla 'Z' (Modo de Render / Shading Pie)
+    SCULPTPAD_KEY_N            = 0x13,  ///< Tecla 'N' (Painel de Transformações)
+    SCULPTPAD_KEY_COMMA        = 0x14,  ///< Tecla '<' (Vírgula / Orientação)
+    SCULPTPAD_KEY_PERIOD       = 0x15,  ///< Tecla '>' (Ponto / Pivô)
+    SCULPTPAD_KEY_QUOTE        = 0x16,  ///< Tecla '\'' (Aspas / Visualizações)
+    SCULPTPAD_KEY_TAB          = 0x17,  ///< Tecla 'Tab' (Alternar Edit/Sculpt Mode)
+    SCULPTPAD_COMBO_CTRL_S     = 0x18,  ///< 'Ctrl + S' (Salvar Projeto)
+    SCULPTPAD_COMBO_SHIFT_Z    = 0x19,  ///< 'Shift + Z' (Ver Arestas / Wireframe)
+    SCULPTPAD_COMBO_SHIFT_F    = 0x1A,  ///< 'Shift + F' (Controle de Força do Pincel)
+    SCULPTPAD_UNDO             = 0x1B,  ///< 'Ctrl + Z' (Desfazer)
+    SCULPTPAD_REDO             = 0x1C   ///< 'Ctrl + Shift + Z' (Refazer)
 };
 
 /**
