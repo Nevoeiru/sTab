@@ -182,6 +182,13 @@ int main(int argc, char* argv[]) {
 
     int vidWidth = hasCapture ? capture.GetWidth() : 1920;
     int vidHeight = hasCapture ? capture.GetHeight() : 1080;
+    int deskX = hasCapture ? capture.GetDesktopX() : 0;
+    int deskY = hasCapture ? capture.GetDesktopY() : 0;
+
+    // Vincula a resolucao e origem fisica exata da tela capturada ao injetor de caneta
+    injector.SetTargetDisplayBounds(deskX, deskY, vidWidth, vidHeight);
+    printf("[Main] Area de injecao S-Pen calibrada para o display: (%d, %d) [%dx%d]\n",
+           deskX, deskY, vidWidth, vidHeight);
 
     H264Encoder encoder;
     bool hasEncoder = encoder.Initialize(vidWidth, vidHeight, 90, 35000000);

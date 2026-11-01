@@ -9,6 +9,8 @@ DxgiCapture::DxgiCapture()
     , m_lastFrameTexture(NULL)
     , m_width(1920)
     , m_height(1080)
+    , m_desktopX(0)
+    , m_desktopY(0)
     , m_initialized(false)
     , m_hasAcquiredFrame(false)
     , m_isUsingVirtualDisplay(false)
@@ -106,6 +108,8 @@ bool DxgiCapture::SetupDuplication() {
     selectedOutput->GetDesc(&outputDesc);
     m_width = outputDesc.DesktopCoordinates.right - outputDesc.DesktopCoordinates.left;
     m_height = outputDesc.DesktopCoordinates.bottom - outputDesc.DesktopCoordinates.top;
+    m_desktopX = outputDesc.DesktopCoordinates.left;
+    m_desktopY = outputDesc.DesktopCoordinates.top;
     m_isUsingVirtualDisplay = foundTarget1610;
 
     if (foundTarget1610) {

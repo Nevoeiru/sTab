@@ -157,22 +157,29 @@ void PointerInjector::SetModalNavigationActive(bool active) {
 }
 
 void PointerInjector::HandleBarrelButtonAsRMB(bool isButtonPressed, int screenX, int screenY) {
+    int vLeft = GetSystemMetrics(SM_XVIRTUALSCREEN);
+    int vTop = GetSystemMetrics(SM_YVIRTUALSCREEN);
+    int vWidth = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+    int vHeight = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+    if (vWidth <= 0) vWidth = GetSystemMetrics(SM_CXSCREEN);
+    if (vHeight <= 0) vHeight = GetSystemMetrics(SM_CYSCREEN);
+
     if (isButtonPressed && !m_wasBarrelPressed) {
         // Dispara clique direito (RMB DOWN) para abrir o Brush Context Menu no Blender
         INPUT input = {};
         input.type = INPUT_MOUSE;
-        input.mi.dx = (LONG)((screenX * 65535) / GetSystemMetrics(SM_CXSCREEN));
-        input.mi.dy = (LONG)((screenY * 65535) / GetSystemMetrics(SM_CYSCREEN));
-        input.mi.dwFlags = MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_RIGHTDOWN;
+        input.mi.dx = (LONG)(((int64_t)(screenX - vLeft) * 65535) / vWidth);
+        input.mi.dy = (LONG)(((int64_t)(screenY - vTop) * 65535) / vHeight);
+        input.mi.dwFlags = MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK | MOUSEEVENTF_RIGHTDOWN;
         SendInput(1, &input, sizeof(INPUT));
         m_wasBarrelPressed = true;
     } else if (!isButtonPressed && m_wasBarrelPressed) {
         // Dispara liberação do clique direito (RMB UP)
         INPUT input = {};
         input.type = INPUT_MOUSE;
-        input.mi.dx = (LONG)((screenX * 65535) / GetSystemMetrics(SM_CXSCREEN));
-        input.mi.dy = (LONG)((screenY * 65535) / GetSystemMetrics(SM_CYSCREEN));
-        input.mi.dwFlags = MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_RIGHTUP;
+        input.mi.dx = (LONG)(((int64_t)(screenX - vLeft) * 65535) / vWidth);
+        input.mi.dy = (LONG)(((int64_t)(screenY - vTop) * 65535) / vHeight);
+        input.mi.dwFlags = MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK | MOUSEEVENTF_RIGHTUP;
         SendInput(1, &input, sizeof(INPUT));
         m_wasBarrelPressed = false;
     }

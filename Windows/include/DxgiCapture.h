@@ -43,6 +43,8 @@ public:
 
     int GetWidth() const { return m_width; }
     int GetHeight() const { return m_height; }
+    int GetDesktopX() const { return m_desktopX; }
+    int GetDesktopY() const { return m_desktopY; }
     ID3D11Device* GetDevice() const { return m_d3dDevice; }
     ID3D11DeviceContext* GetContext() const { return m_d3dContext; }
     bool IsInitialized() const { return m_initialized; }
@@ -59,6 +61,8 @@ private:
 
     int m_width;
     int m_height;
+    int m_desktopX;
+    int m_desktopY;
     bool m_initialized;
     bool m_hasAcquiredFrame;
     bool m_isUsingVirtualDisplay;
