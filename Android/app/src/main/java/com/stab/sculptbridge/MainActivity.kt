@@ -1,17 +1,21 @@
 package com.stab.sculptbridge
 
 import android.app.Activity
+import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.MotionEvent
-import android.view.View
+import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.LinearLayout
 import android.widget.Toast
+import com.stab.sculptbridge.ui.RadiusOverlayView
+import com.stab.sculptbridge.ui.SculptPadLayout
 
 /**
  * Activity Principal do sTab (SculptBridge) no Galaxy Tab S9 FE+.
- * Configura taxa de 90Hz nativa, tela cheia imersiva, blindagem One UI e despacho USB.
+ * Integra a View de captura 3D a 90Hz com o painel lateral ergonômico SculptPad.
  */
 class MainActivity : Activity() {
 
@@ -19,21 +23,27 @@ class MainActivity : Activity() {
     private lateinit var oneUiShield: OneUiShield
     private lateinit var dispatcher: SculptTouchDispatcher
     private lateinit var canvasView: SculptCanvasView
+    private lateinit var radiusOverlay: RadiusOverlayView
+    private lateinit var sculptPad: SculptPadLayout
+
+    private lateinit var rootContainer: LinearLayout
+    private lateinit var viewportContainer: FrameLayout
+    private var isLeftHandMode = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // 1. Configura a blindagem da One UI e modo imersivo
+        // 1. Configura blindagem do sistema contra One UI e gestos de borda
         oneUiShield = OneUiShield(window)
 
         // 2. Trava a taxa de atualização do display em 90Hz no Galaxy Tab S9 FE+
         configure90HzDisplay()
 
-        // 3. Inicializa o cliente USB local (porta 27183)
+        // 3. Inicializa cliente USB e despachante
         usbClient = UsbSocketClient()
         dispatcher = SculptTouchDispatcher(usbClient)
 
-        // 4. Cria a View de captura em tela cheia
+        // 4. Cria a View principal de desenho e a camada de sobreposição de raio
         canvasView = SculptCanvasView(this).apply {
             this.dispatcher = this@MainActivity.dispatcher
             layoutParams = FrameLayout.LayoutParams(
@@ -42,22 +52,105 @@ class MainActivity : Activity() {
             )
         }
 
-        val rootLayout = FrameLayout(this).apply {
-            addView(canvasView)
-            setBackgroundColor(android.graphics.Color.parseColor("#121214"))
+        radiusOverlay = RadiusOverlayView(this).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+            visibility = android.view.View.GONE
         }
 
-        setContentView(rootLayout)
+        viewportContainer = FrameLayout(this).apply {
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f)
+            addView(canvasView)
+            addView(radiusOverlay)
+        }
 
-        // Aplica exclusão de gestos de borda da tela
-        oneUiShield.setupImmersiveMode(rootLayout)
-        oneUiShield.applyGestureExclusion(rootLayout)
+        // 5. Cria a barra lateral tátil SculptPad (~220dp de largura)
+        val density = resources.displayMetrics.density
+        val padWidthPx = (220 * density).toInt()
+
+        sculptPad = SculptPadLayout(
+            context = this,
+            onActionEmitted = { action ->
+                emitSculptPadAction(action)
+            },
+            onRadiusChanged = { radius, isAdjusting ->
+                if (isAdjusting) {
+                    radiusOverlay.showRadius(radius)
+                } else {
+                    radiusOverlay.hideRadius()
+                }
+            },
+            onHandSwapped = {
+                swapHandOrientation()
+            }
+        ).apply {
+            layoutParams = LinearLayout.LayoutParams(padWidthPx, LinearLayout.LayoutParams.MATCH_PARENT)
+        }
+
+        // 6. Monta o container horizontal
+        rootContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setBackgroundColor(Color.parseColor("#121214"))
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        }
+
+        assembleLayout()
+        setContentView(rootContainer)
+
+        // Aplica modo imersivo e exclusão de bordas
+        oneUiShield.setupImmersiveMode(rootContainer)
+        oneUiShield.applyGestureExclusion(rootContainer)
 
         usbClient.onConnectionStateChanged = { connected ->
             runOnUiThread {
                 val msg = if (connected) "sTab: Conectado ao PC via USB!" else "sTab: Aguardando cabo USB / Servidor..."
                 Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
             }
+        }
+    }
+
+    private fun assembleLayout() {
+        rootContainer.removeAllViews()
+        if (isLeftHandMode) {
+            // Modo Canhoto: Viewport na esquerda, SculptPad na borda direita
+            rootContainer.addView(viewportContainer)
+            rootContainer.addView(sculptPad)
+        } else {
+            // Modo Destro (Padrão): SculptPad na borda esquerda, Viewport na direita
+            rootContainer.addView(sculptPad)
+            rootContainer.addView(viewportContainer)
+        }
+    }
+
+    private fun swapHandOrientation() {
+        isLeftHandMode = !isLeftHandMode
+        assembleLayout()
+        val side = if (isLeftHandMode) "Canhoto (Direita)" else "Destro (Esquerda)"
+        Toast.makeText(this, "SculptPad alternado para modo $side", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun emitSculptPadAction(action: Byte) {
+        if (action == Protocol.GESTURE_TAP_TWO_FINGERS || action == Protocol.GESTURE_TAP_THREE_FINGERS) {
+            val packet = InputPacket(
+                packetType = Protocol.PACKET_TYPE_TOUCH_GESTURE,
+                flags = Protocol.FLAG_TOUCH_GESTURE_ACTIVE,
+                x = 0, y = 0, pressure = 0, tiltX = 0, tiltY = 0,
+                payload = (action.toInt() and 0xFF)
+            )
+            usbClient.sendPacket(packet)
+        } else {
+            val packet = InputPacket(
+                packetType = Protocol.PACKET_TYPE_SCULPTPAD,
+                flags = Protocol.FLAG_NONE,
+                x = 0, y = 0, pressure = 0, tiltX = 0, tiltY = 0,
+                payload = (action.toInt() and 0xFF)
+            )
+            usbClient.sendPacket(packet)
         }
     }
 
@@ -72,12 +165,8 @@ class MainActivity : Activity() {
         usbClient.stop()
     }
 
-    /**
-     * Intercepta o botão físico da S-Pen para evitar que o menu Air Command da Samsung abra.
-     */
     override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
         if (oneUiShield.isBarrelButtonPressed(event)) {
-            // Repassa para o despachante e consome o evento
             canvasView.dispatchGenericMotionEvent(event)
             return true
         }
@@ -104,4 +193,3 @@ class MainActivity : Activity() {
         }
     }
 }
-
